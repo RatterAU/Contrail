@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="Contrail — what's that plane, and where's it going? A live flight tracker for Android, with a real flight card showing Virgin Australia VA223 from Melbourne to Adelaide, on approach, landing in 6 minutes">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="Contrail — where did that plane come from, where's it going, and what is it? A live flight tracker for Android, with a real flight card showing Virgin Australia VA223 from Melbourne to Adelaide, on approach, landing in 6 minutes">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0B0F17"/>
@@ -44,8 +44,8 @@
     <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Inter, Helvetica, Arial, sans-serif">
       <text x="72" y="128" font-size="66" font-weight="800" letter-spacing="-2" fill="#FFFFFF">Contrail</text>
       <rect x="75" y="150" width="132" height="3" rx="1.5" fill="url(#rule)"/>
-      <text x="74" y="194" font-size="25" font-weight="500" fill="#AEB6C4">What&#8217;s that plane, and where&#8217;s it going?</text>
-      <text x="75" y="234" font-size="14" font-weight="600" letter-spacing="2.4" fill="#0A84FF">LIVE ADS-B &#183; ANDROID &#183; NO ADS, NO ACCOUNTS</text>
+      <text x="74" y="194" font-size="25" font-weight="500" fill="#AEB6C4">Where&#8217;s it from, where&#8217;s it going, what is it?</text>
+      <text x="75" y="234" font-size="14" font-weight="600" letter-spacing="2.4" fill="#0A84FF">ANDROID &#183; NO ADS &#183; NO PAYWALLS &#183; NO NONSENSE</text>
     </g>
 
     <!-- the flight card, drawn the way the app draws it -->

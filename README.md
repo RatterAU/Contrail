@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="docs/hero.svg" alt="Contrail — what's that plane, and where's it going? A live flight tracker for Android, showing Virgin Australia VA223 from Melbourne to Adelaide, on approach, landing in 6 minutes" width="100%">
+<img src="docs/hero.svg" alt="Contrail — where did that plane come from, where's it going, and what is it? A live flight tracker for Android, showing Virgin Australia VA223 from Melbourne to Adelaide, on approach, landing in 6 minutes" width="100%">
 
 <br><br>
 
-**An Android app that shows every plane in the sky around you, live.**
+**A flight tracker for Android with no ads, no paywalls and no nonsense.**
 
-It exists to answer one question: **what's that plane, and where's it going?**
+You see a plane. You tap it. You know **where it came from, where it's going, and exactly what it is.**
 
 <br>
 
@@ -25,11 +25,11 @@ It exists to answer one question: **what's that plane, and where's it going?**
 
 ## Why
 
-Every flight tracking app on the Play Store does the same thing. It shows you a plane, then shows you an ad. Tap for the route and it wants a subscription. Look at the flight's history and it wants a bigger one. The data underneath is public. Aircraft broadcast their own position over open radio, and volunteers all over the world pick it up and share it for free. The paywall is wrapped around something nobody paid for.
+Every flight tracker does the same thing. It shows you a plane, then an ad. Tap for the route and it wants a subscription. Look at where the plane has been and it wants a bigger one. Meanwhile the data underneath is free: aircraft broadcast their own position over open radio, and volunteers around the world pick it up and share it. The paywall is wrapped around something nobody paid for.
 
-So I built the version I wanted. No ads, no paywall, no account, no "Gold" tier. Nothing is locked. It just works, it's clean, and it does its job: you see a plane, you tap it, you know what it is.
+Contrail is the same job without the garbage. No ads, no paywall, no account, no "Gold" tier, no pop-ups asking you to rate it. Nothing is locked. It just works, it's clean, and it does its job.
 
-It's a personal project, one person with no company behind it. Your phone talks straight to free public feeds, and there's no server in between to pay for or to collect anything.
+Your phone talks straight to free public feeds. There's no server in between to pay for, and nothing collecting anything.
 
 <br>
 
@@ -41,19 +41,19 @@ It's a personal project, one person with no company behind it. Your phone talks 
 &nbsp;
 <img src="docs/screenshots/airport.png" width="270" alt="Adelaide Airport sheet: live weather showing VFR, 17 degrees, wind 270 at 6 knots, runway 23 in use, and an arrivals board where VA223 has landed at 1:16 PM and the next Qantas and Jetstar arrivals are estimated">
 
-<sub><b>Everything in the sky</b> · <b>Tap a plane</b> · <b>Any airport</b></sub>
+<sub><b>See it</b> · <b>Tap it</b> · <b>Know where it's landing</b></sub>
 
 <br>
 
-<sub>Real screenshots, real Adelaide traffic, nothing mocked up. The app estimated VA223 would land at 1:17. It landed at 1:16.</sub>
+<sub>Real screenshots, real traffic, nothing mocked up. The app estimated VA223 would land at 1:17. It landed at 1:16.</sub>
 
 </div>
 
 ## What it does
 
-**See everything that's flying, right now.** Every aircraft in range is on the map, coloured by altitude and pointing the way it's going. Airliners carry their airline's tail logo. Between position updates each plane glides along at its real speed and heading instead of jumping, so the map looks alive rather than refreshing.
+**Tap a plane, know everything about it.** Where it took off, where it's landing, and when. The airline, the exact aircraft type, its registration, how old it is and where it's registered. A real photo of that very aircraft, with the photographer credited. How high, how fast, climbing or descending, and whether it's on autopilot. The sheet leads with plain English ("On final approach into Adelaide", "6 kt crosswind from the left", "12 km NW of Woodside"). The raw numbers are folded away under *Technical details* for anyone who wants them.
 
-**Tap a plane, know what it is.** The airline, the aircraft type, its registration and its age. A real photo of that exact aircraft, with the photographer credited. Where it took off, where it's landing, and when. The sheet leads with plain English ("On final approach into Adelaide", "6 kt crosswind from the left", "12 km NW of Woodside"). The raw numbers are folded away under *Technical details* for anyone who wants them.
+**See everything that's flying, right now.** Every aircraft in range is on the map, coloured by altitude and pointing the way it's going. Airliners carry their airline's tail logo. Between position updates each plane glides along at its real speed and heading instead of jumping, so the map looks alive rather than refreshing.
 
 **Routes it can prove.** Most trackers look up a route by flight number and show it as fact, even when the aircraft is flying something else that day. Contrail checks the plane's position and heading against the route first. If they don't agree, it says *Route unconfirmed* instead of guessing. Landing times are always marked *est.*, because that's what they are.
 
@@ -288,8 +288,3 @@ All sources are free and keyless. None of them needed a sign-up.
 Not affiliated with or endorsed by any airline, airport or data provider. Photos remain the property of their photographers.
 
 Code is MIT licensed. See [LICENSE](LICENSE).
-
-<div align="center">
-<br>
-<sub>Built in Adelaide 🇦🇺</sub>
-</div>
