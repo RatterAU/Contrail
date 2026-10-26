@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Contrail" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/night</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+    <color name="night">#FF0B0F1A</color>
+    <color name="contrail">#FF8AB4FF</color>
+</resources>

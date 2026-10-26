@@ -1,0 +1,44 @@
+package app.contrail
+
+import app.contrail.data.feed.FlightHistory
+import app.contrail.data.feed.parseReadsb
+import app.contrail.domain.Track
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import kotlin.math.abs
+
+class HistoryTest {
+    // Sydney gate, climb-out, then a 30 min coverage gap to over the Bight (as seen on QFA655).
+    private val json = """{"icao24":"7c6dde","path":[
+        [1000,-33.9374,151.1737,0,348,false],
+        [1020,-33.9280,151.1713,304,347,false],
+        [1600,-33.5000,149.0000,10972,260,false],
+        [3400,-34.8000,138.0000,10972,265,false]]}"""
+
+    @Test fun parsesConvertsAndBridgesGaps() {
+        val pts = FlightHistory.parseOpenSkyTrack(json, 3_500_000)!!
+        assertEquals(1_000_000L, pts.first().time)
+        assertEquals(997, pts[1].alt) // 304 m in feet
+        // No step bigger than the trail's 0.8° gap rule, so the line is drawn whole.
+        pts.zipWithNext().forEach { (a, b) -> assertTrue("${a.lon} -> ${b.lon}", abs(a.lon - b.lon) < 0.8 && abs(a.lat - b.lat) < 0.8) }
+        assertTrue(pts.zipWithNext().all { (a, b) -> b.time >= a.time })
+        // Ground speed derived from the fixes: ~560 nm in 30 min.
+        assertEquals(1120.0, pts.last().gs!!, 120.0)
+    }
+
+    @Test fun anEarlierFlightIsIgnored() {
+        assertNull(FlightHistory.parseOpenSkyTrack(json, 3_400_000 + 16 * 60_000))
+    }
+
+    @Test fun historyPrependsAndGivesTheRealTakeoffTime() {
+        val live = Track.start(parseReadsb("""{"ac":[{"hex":"7c6dde","lat":-34.81,"lon":137.9,"alt_baro":36000,"gs":460,"seen_pos":0}]}""", 3_410_000).single(), 3_410_000)
+        val t = live.withHistory(FlightHistory.parseOpenSkyTrack(json, 3_500_000)!!)
+        assertEquals(1_020_000L, t.takeoffAt)
+        assertEquals(live.trail.last(), t.trail.last())
+        assertTrue(t.trail.size > 4)
+        // Merging the same history again changes nothing.
+        assertEquals(t.trail.size, t.withHistory(FlightHistory.parseOpenSkyTrack(json, 3_500_000)!!).trail.size)
+    }
+}

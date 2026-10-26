@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-label="Contrail — what's that plane, and where's it going? A live flight tracker for Android, with a real flight card showing Virgin Australia VA223 from Melbourne to Adelaide, on approach, landing in 6 minutes">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B0F17"/>
+      <stop offset="1" stop-color="#141B2A"/>
+    </linearGradient>
+    <linearGradient id="rule" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0A84FF"/>
+      <stop offset="1" stop-color="#0A84FF" stop-opacity="0"/>
+    </linearGradient>
+    <!-- the trail, coloured by altitude the way the map draws it: high (magenta) down to low (orange) -->
+    <linearGradient id="trail" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F05CF5" stop-opacity="0"/>
+      <stop offset="0.25" stop-color="#F05CF5" stop-opacity="0.7"/>
+      <stop offset="0.55" stop-color="#5E5CE6"/>
+      <stop offset="0.75" stop-color="#40C8E0"/>
+      <stop offset="0.9" stop-color="#30D158"/>
+      <stop offset="1" stop-color="#FF9F0A"/>
+    </linearGradient>
+    <clipPath id="frame"><rect width="1200" height="360" rx="22"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="1200" height="360" fill="url(#bg)"/>
+
+    <!-- coastline and road substrate, muted like the dark map style -->
+    <g stroke="#FFFFFF" stroke-opacity="0.05" stroke-width="1.5" fill="none">
+      <path d="M-20 300C120 292 200 250 260 262s90 40 150 30 120-60 200-54 160 50 260 40 200-40 350-30"/>
+      <path d="M90 -20C110 80 160 140 150 240s20 120 30 160"/>
+      <path d="M520 -20V380M760 -20V380M1000 -20V380"/>
+    </g>
+    <g fill="#0A84FF" fill-opacity="0.75">
+      <circle cx="152" cy="246" r="3.5"/><circle cx="402" cy="290" r="3.5"/><circle cx="612" cy="250" r="3.5"/>
+    </g>
+
+    <!-- the contrail itself: a real flown path, curving in to land -->
+    <path d="M230 390C330 340 450 306 560 288s80-16 110-24" stroke="url(#trail)" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <!-- aircraft glyph, selected (white), heading along the path -->
+    <g transform="translate(684 260) rotate(75)">
+      <path d="M0 -20c2.2 0 3.4 2.4 3.4 5.6V-5l15 8.6v4.2L3.4 3.4v8.8l5 3.8v3.4L0 17.2l-8.4 2.2V16l5-3.8V3.4l-15 4.4V3.6l15-8.6v-9.4C-3.4 -17.6 -2.2 -20 0 -20z" fill="#FFFFFF" stroke="#0B0F17" stroke-width="1.5"/>
+    </g>
+
+    <!-- wordmark -->
+    <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Inter, Helvetica, Arial, sans-serif">
+      <text x="72" y="128" font-size="66" font-weight="800" letter-spacing="-2" fill="#FFFFFF">Contrail</text>
+      <rect x="75" y="150" width="132" height="3" rx="1.5" fill="url(#rule)"/>
+      <text x="74" y="194" font-size="25" font-weight="500" fill="#AEB6C4">What&#8217;s that plane, and where&#8217;s it going?</text>
+      <text x="75" y="234" font-size="14" font-weight="600" letter-spacing="2.4" fill="#0A84FF">LIVE ADS-B &#183; ANDROID &#183; NO ADS, NO ACCOUNTS</text>
+    </g>
+
+    <!-- the flight card, drawn the way the app draws it -->
+    <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Inter, Helvetica, Arial, sans-serif">
+      <rect x="732" y="56" width="420" height="248" rx="24" fill="#1C1C1E" stroke="#FFFFFF" stroke-opacity="0.10"/>
+
+      <!-- Virgin tail mark stand-in: a red rounded flag -->
+      <path d="M764 86h34l8 14-14 14h-28z" fill="#E1261C"/>
+      <text x="822" y="106" font-size="26" font-weight="800" letter-spacing="-0.6" fill="#FFFFFF">VA223</text>
+      <text x="822" y="128" font-size="14" font-weight="500" fill="#8E8E93">Virgin Australia &#183; Boeing 737-800</text>
+
+      <rect x="1006" y="84" width="122" height="28" rx="14" fill="#FF9F0A" fill-opacity="0.16"/>
+      <text x="1067" y="103" font-size="14" font-weight="600" fill="#FF9F0A" text-anchor="middle">On approach</text>
+
+      <line x1="764" y1="150" x2="1120" y2="150" stroke="#FFFFFF" stroke-opacity="0.10"/>
+
+      <text x="764" y="196" font-size="34" font-weight="800" letter-spacing="-1" fill="#FFFFFF">MEL</text>
+      <text x="764" y="218" font-size="14" font-weight="500" fill="#8E8E93">Melbourne</text>
+      <text x="1120" y="196" font-size="34" font-weight="800" letter-spacing="-1" fill="#FFFFFF" text-anchor="end">ADL</text>
+      <text x="1120" y="218" font-size="14" font-weight="500" fill="#8E8E93" text-anchor="end">Adelaide</text>
+      <line x1="858" y1="184" x2="1012" y2="184" stroke="#0A84FF" stroke-width="3" stroke-linecap="round"/>
+      <path d="M1000 177l14 7-14 7z" fill="#0A84FF"/>
+
+      <text x="764" y="256" font-size="13" font-weight="500" fill="#8E8E93">Took off</text>
+      <text x="764" y="280" font-size="19" font-weight="700" fill="#FFFFFF">56m ago</text>
+      <text x="1120" y="256" font-size="13" font-weight="500" fill="#8E8E93" text-anchor="end">Lands (est.)</text>
+      <text x="1120" y="280" font-size="19" font-weight="700" fill="#FFFFFF" text-anchor="end">in 6m &#183; 1:17 pm</text>
+    </g>
+
+    <!-- feed status chip, top-left of the map like the app -->
+    <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, Inter, Helvetica, Arial, sans-serif">
+      <rect x="72" y="292" width="132" height="32" rx="16" fill="#FFFFFF" fill-opacity="0.10"/>
+      <circle cx="92" cy="308" r="5" fill="#30D158"/>
+      <text x="106" y="313" font-size="14" font-weight="600" fill="#C6CEDB">107 aircraft</text>
+    </g>
+
+    <rect x="0.5" y="0.5" width="1199" height="359" rx="22" fill="none" stroke="#FFFFFF" stroke-opacity="0.09"/>
+  </g>
+</svg>

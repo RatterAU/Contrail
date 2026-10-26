@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plane climbing out of a contrail streak, inside the 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#338AB4FF" android:pathData="M24,80 L60,50 L64,54 L28,84 Z" />
+    <group android:pivotX="66" android:pivotY="44" android:rotation="45" android:translateX="0">
+        <path android:fillColor="#FFFFFFFF"
+            android:pathData="M66,24 C68,24 69,26 69,29 L69,38 L84,47 L84,51 L69,47 L69,58 L74,62 L74,65 L66,63 L58,65 L58,62 L63,58 L63,47 L48,51 L48,47 L63,38 L63,29 C63,26 64,24 66,24 Z" />
+    </group>
+</vector>
