@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="470" viewBox="0 0 1100 470" role="img" aria-label="How Contrail works. Live positions from adsb.lol and adsb.fi go through a scheduler that takes turns and fails over, into the live traffic store, then each plane's track predicts its position for the map. When you tap a plane, lookups to adsbdb, airport-data, OpenSky and logo sets feed a route check against the live track, which fills the aircraft sheet. Bundled airport, runway and airline data feeds the route check and the airport boards, which also read the live traffic.">
+  <style>
+    .bg { fill: #ffffff; }
+    .box { fill: #F2F2F7; stroke: #D1D1D6; stroke-width: 1.5; }
+    .key { fill: #E5F0FF; stroke: #0A84FF; stroke-width: 1.5; }
+    .t { font: 600 17px -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill: #1C1C1E; text-anchor: middle; }
+    .s { font: 400 13.5px -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif; fill: #6C6C70; text-anchor: middle; }
+    .a { stroke: #8E8E93; stroke-width: 2; fill: none; marker-end: url(#h); }
+    .hd { fill: #8E8E93; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0D1117; }
+      .box { fill: #1C1C1E; stroke: #3A3A3C; }
+      .key { fill: #0A2A4D; stroke: #0A84FF; }
+      .t { fill: #F2F2F7; }
+      .s { fill: #98989F; }
+      .a { stroke: #636366; }
+      .hd { fill: #636366; }
+    }
+  </style>
+  <defs>
+    <marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="hd" d="M0 0 L10 5 L0 10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1100" height="470" rx="16"/>
+
+  <!-- Row 1: live positions -->
+  <rect class="box" x="20" y="24" width="170" height="52" rx="12"/>
+  <text class="t" x="105" y="56">adsb.lol</text>
+  <rect class="box" x="20" y="96" width="170" height="52" rx="12"/>
+  <text class="t" x="105" y="128">adsb.fi</text>
+
+  <rect class="box" x="240" y="54" width="180" height="66" rx="12"/>
+  <text class="t" x="330" y="82">Scheduler</text>
+  <text class="s" x="330" y="104">takes turns · fails over</text>
+
+  <rect class="box" x="470" y="54" width="180" height="66" rx="12"/>
+  <text class="t" x="560" y="82">Live traffic</text>
+  <text class="s" x="560" y="104">every plane, by hex</text>
+
+  <rect class="box" x="700" y="54" width="180" height="66" rx="12"/>
+  <text class="t" x="790" y="82">Track</text>
+  <text class="s" x="790" y="104">predicts · glides</text>
+
+  <rect class="box" x="920" y="54" width="160" height="66" rx="12"/>
+  <text class="t" x="1000" y="82">Map</text>
+  <text class="s" x="1000" y="104">paced by zoom</text>
+
+  <path class="a" d="M190 50 C215 50 215 80 238 82"/>
+  <path class="a" d="M190 122 C215 122 215 94 238 92"/>
+  <path class="a" d="M420 87 H468"/>
+  <path class="a" d="M650 87 H698"/>
+  <path class="a" d="M880 87 H918"/>
+
+  <!-- Row 2: when you tap a plane -->
+  <rect class="key" x="20" y="200" width="170" height="66" rx="33"/>
+  <text class="t" x="105" y="239">You tap a plane</text>
+
+  <rect class="box" x="240" y="200" width="300" height="66" rx="12"/>
+  <text class="t" x="390" y="228">Lookups</text>
+  <text class="s" x="390" y="250">adsbdb · airport-data · OpenSky · logos</text>
+
+  <rect class="key" x="700" y="200" width="180" height="66" rx="12"/>
+  <text class="t" x="790" y="228">Route check</text>
+  <text class="s" x="790" y="250">verified, or read off the path</text>
+
+  <rect class="box" x="920" y="200" width="160" height="66" rx="12"/>
+  <text class="t" x="1000" y="238">Aircraft sheet</text>
+
+  <path class="a" d="M190 233 H238"/>
+  <path class="a" d="M540 233 H698"/>
+  <path class="a" d="M790 120 V198"/>
+  <path class="a" d="M880 233 H918"/>
+
+  <!-- Row 3: bundled data -->
+  <rect class="box" x="700" y="340" width="180" height="66" rx="12"/>
+  <text class="t" x="790" y="368">Bundled data</text>
+  <text class="s" x="790" y="390">airports · runways · airlines</text>
+
+  <rect class="box" x="920" y="340" width="160" height="66" rx="12"/>
+  <text class="t" x="1000" y="378">Airport boards</text>
+
+  <path class="a" d="M880 373 H918"/>
+  <path class="a" d="M790 340 V268"/>
+  <path class="a" d="M560 120 V436 Q560 446 570 446 H990 Q1000 446 1000 436 V408"/>
+</svg>

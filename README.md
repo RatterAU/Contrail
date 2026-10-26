@@ -208,23 +208,7 @@ It needs iOS 26. With a free Apple ID, the app has to be re-run from Xcode every
 
 Kotlin and Jetpack Compose with MapLibre on Android, SwiftUI and MapKit on iPhone, and no backend. Both apps share the same bundled airport data and the same logic, tested on each side. Live positions come in about once a second from two volunteer ADS-B networks that serve the same format. Everything else is looked up only when you tap something.
 
-```mermaid
-flowchart LR
-    LOL["adsb.lol"] --> SCH
-    FI["adsb.fi"] --> SCH["FeedScheduler<br/><i>round-robin · failover</i>"]
-    SCH --> REPO[("TrafficRepository<br/><i>tracks by hex</i>")]
-    REPO --> TRK{{"Track<br/><i>dead reckoning · blending</i>"}}
-    TRK --> MAP["Map<br/><i>paced by zoom</i>"]
-
-    TAP(["You tap a plane"]) --> ENR["adsbdb · airport-data<br/>OpenSky · logos"]
-    ENR --> VER{{"FlightProgress<br/><i>route verified or not</i>"}}
-    TRK --> VER
-    VER --> SHEET["Aircraft sheet"]
-
-    TSV[("Bundled airports,<br/>runways, airlines")] --> SHEET
-    TSV --> BOARD["Airport boards"]
-    REPO --> BOARD
-```
+<img src="docs/architecture.svg" width="100%" alt="How Contrail works: live positions from adsb.lol and adsb.fi go through a scheduler into the live traffic store, then each plane's track predicts its position for the map. Tapping a plane runs lookups to adsbdb, airport-data, OpenSky and logo sets, and a route check against the live track and bundled airport data fills the aircraft sheet. Airport boards read the live traffic and bundled data.">
 
 Three decisions carry most of the weight:
 
