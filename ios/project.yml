@@ -1,0 +1,90 @@
+name: Contrail
+options:
+  bundleIdPrefix: app.contrail
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  SWIFT_VERSION: "6.0"
+  SWIFT_STRICT_CONCURRENCY: complete
+  DEVELOPMENT_TEAM: ""
+  CODE_SIGN_STYLE: Automatic
+  # Set here rather than through Xcode's "recommended settings" prompt: accepting it writes into the
+  # .xcodeproj, which xcodegen regenerates from this file, so the prompt would come back forever.
+  ENABLE_USER_SCRIPT_SANDBOXING: YES
+  ENABLE_STRING_CATALOG_SYMBOL_GENERATION: YES
+
+targets:
+  Contrail:
+    type: application
+    platform: iOS
+    # iOS 26 runs on iPhone 11 and newer (2019 on), and is the first with Liquid Glass.
+    deploymentTarget: "26.0"
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: app.contrail.ios
+      TARGETED_DEVICE_FAMILY: "1"
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    sources:
+      - path: Contrail
+      # One copy of the reference data for both apps: the Android assets folder.
+      - path: ../app/src/main/assets
+        buildPhase: resources
+        type: folder
+        name: Data
+    info:
+      path: Contrail/App/Info.plist
+      properties:
+        CFBundleDisplayName: Contrail
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSLocationWhenInUseUsageDescription: "Contrail centres the map on you and shows which planes are overhead."
+        NSCameraUsageDescription: "Sky view labels the planes you point your camera at."
+        NSMotionUsageDescription: "Sky view and Near you use the compass to show which way to look."
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+
+  ContrailTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "26.0"
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
+    sources:
+      - path: ContrailTests
+    dependencies:
+      - target: Contrail
+
+  # Drives the app through its screens and saves screenshots (for checking layout on the simulator).
+  ContrailUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "26.0"
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
+      TEST_TARGET_NAME: Contrail
+    sources:
+      - path: ContrailUITests
+    dependencies:
+      - target: Contrail
+
+schemes:
+  Contrail:
+    build:
+      targets:
+        Contrail: all
+    test:
+      targets:
+        - ContrailTests
+  ContrailTour:
+    build:
+      targets:
+        Contrail: all
+        ContrailUITests: [test]
+    test:
+      targets:
+        - ContrailUITests

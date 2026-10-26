@@ -11,3 +11,5 @@ keystore.properties
 .DS_Store
 *.apk
 STATUS.md
+xcuserdata/
+*.xcresult

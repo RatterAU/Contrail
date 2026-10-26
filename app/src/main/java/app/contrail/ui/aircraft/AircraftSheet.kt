@@ -106,7 +106,7 @@ fun AircraftSheet(
     val clock = remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(1000); clock.longValue = System.currentTimeMillis() } }
     val info = enrichment?.info
-    val route = enrichment?.route
+    val route = FlightProgressCalc.shownRoute(track, enrichment?.route, System.currentTimeMillis())
     val airlineIcao = StaticData.now()?.airlineCode(a.callsign) ?: route?.airline?.icao // the operator flying it (QantasLink, not Qantas)
     val airlineName = route?.airline?.name ?: StaticData.now()?.airlineForCallsign(a.callsign)?.name
 

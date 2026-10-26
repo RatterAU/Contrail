@@ -61,11 +61,27 @@ fun clockParts(ms: Long, tz: String?, place: String?): Pair<String, String?> {
 @Composable
 fun RouteCard(route: Route, p: FlightProgress, now: Long) {
     val cs = MaterialTheme.colorScheme
+    if (!p.verified) {
+        // A route that fails the position check is shown only as a note: big airport codes read as fact.
+        Surface(shape = MaterialTheme.shapes.medium, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.AutoMirrored.Rounded.HelpOutline, null, Modifier.size(18.dp), tint = cs.tertiary)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Listed as ${route.origin.shortName} to ${route.destination.shortName}, but this plane isn't on that route. " +
+                        "Airlines reuse flight numbers, so the listing is likely out of date.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = cs.onSurfaceVariant,
+                )
+            }
+        }
+        return
+    }
     Surface(shape = MaterialTheme.shapes.medium, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Endpoint(route.origin, Alignment.Start, Modifier.weight(1f))
-                ProgressLine(if (p.verified) p.fraction else null, Modifier.weight(1.3f).padding(horizontal = 8.dp))
+                ProgressLine(p.fraction, Modifier.weight(1.3f).padding(horizontal = 8.dp))
                 Endpoint(route.destination, Alignment.End, Modifier.weight(1f))
             }
             Spacer(Modifier.height(12.dp))
@@ -96,23 +112,11 @@ fun RouteCard(route: Route, p: FlightProgress, now: Long) {
                 )
             }
             Spacer(Modifier.height(10.dp))
-            if (p.verified) {
-                Text(
-                    "${Fmt.nm(p.flownNm)} flown · ${Fmt.nm(p.remainingNm)} to go · ${(p.fraction * 100).toInt()}%",
-                    style = MaterialTheme.typography.bodySmall.merge(Numeric),
-                    color = cs.onSurfaceVariant,
-                )
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.AutoMirrored.Rounded.HelpOutline, null, Modifier.size(16.dp), tint = cs.tertiary)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        "Route unconfirmed: the plane's position doesn't match this route, so times aren't shown.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = cs.onSurfaceVariant,
-                    )
-                }
-            }
+            Text(
+                "${Fmt.nm(p.flownNm)} flown · ${Fmt.nm(p.remainingNm)} to go · ${(p.fraction * 100).toInt()}%",
+                style = MaterialTheme.typography.bodySmall.merge(Numeric),
+                color = cs.onSurfaceVariant,
+            )
         }
     }
 }

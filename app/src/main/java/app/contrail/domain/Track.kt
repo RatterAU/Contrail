@@ -65,8 +65,11 @@ data class Track(
         if (older.isEmpty()) return this
         val start = older.first()
         val fromGround = start.onGround || (start.alt ?: Int.MAX_VALUE) < 1500
-        val takeoff = if (fromGround && !aircraft.onGround) older.firstOrNull { !it.onGround && (it.alt ?: 0) > 200 }?.time else null
-        return copy(trail = (older + trail).takeLast(MAX_TRAIL), takeoffAt = takeoffAt ?: takeoff)
+        val takeoff = if (fromGround) older.firstOrNull { !it.onGround && (it.alt ?: 0) > 200 }?.time else null
+        val took = takeoffAt ?: takeoff
+        // Landed before we started watching: the flown path ends at touchdown.
+        val landed = landedAt ?: if (aircraft.onGround && took != null) older.last().time else null
+        return copy(trail = (older + trail).takeLast(MAX_TRAIL), takeoffAt = took, landedAt = landed)
     }
 
     companion object {

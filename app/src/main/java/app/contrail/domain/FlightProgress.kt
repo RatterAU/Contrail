@@ -1,6 +1,7 @@
 package app.contrail.domain
 
 import app.contrail.data.enrich.Route
+import app.contrail.data.static.StaticData
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -50,6 +51,35 @@ object FlightProgressCalc {
         val finalAvg = (min(gs, 460.0) + 140) / 2
         val hours = (toDestNm - final) / gs + final / finalAvg
         return (hours * 3_600_000).toLong() + 2 * 60_000
+    }
+
+    /**
+     * The route read off where the plane has been, for when the published one is wrong (airlines reuse callsigns):
+     * a path that starts low near one big airport, and the plane now on the ground at another or on final approach to it.
+     */
+    fun flownRoute(t: Track, listed: Route?, data: StaticData): Route? {
+        val a = t.aircraft
+        val start = t.trail.firstOrNull() ?: return null
+        if (!(start.onGround || (start.alt ?: Int.MAX_VALUE) < 4000)) return null
+        val origin = data.majorAirport(start.lat, start.lon, 10.0) ?: return null
+        val dest = (if (a.onGround) data.majorAirport(a.lat, a.lon, 5.0) else approaching(a, data))?.takeIf { it != origin } ?: return null
+        return Route(a.callsign ?: "", listed?.flightNumber, listed?.airline, origin, dest)
+    }
+
+    /** The big airport a plane is on final approach to: low, slowing, close, and pointed at it. */
+    fun approaching(a: Aircraft, data: StaticData): app.contrail.data.enrich.Airport? {
+        val alt = a.altBaro ?: return null
+        if (alt >= 8000 || (a.groundSpeed ?: 0.0) >= 250 || !(alt < 3000 || (a.verticalRate ?: 0.0) < -300)) return null
+        val ap = data.majorAirport(a.lat, a.lon, 25.0) ?: return null
+        val trk = a.track ?: return null
+        val close = Geo.distanceNm(a.lat, a.lon, ap.lat, ap.lon) < 3
+        return ap.takeIf { close || Geo.angleDiff(trk, Geo.bearing(a.lat, a.lon, ap.lat, ap.lon)) <= 30 }
+    }
+
+    /** The route to show: the published one when the position fits it, else one read off the flown path, else the published one. */
+    fun shownRoute(t: Track, listed: Route?, now: Long): Route? {
+        if (listed != null && compute(t, listed, now).verified) return listed
+        return StaticData.now()?.let { flownRoute(t, listed, it) } ?: listed
     }
 
     fun compute(track: Track, route: Route, now: Long): FlightProgress {

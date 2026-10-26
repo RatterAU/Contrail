@@ -266,8 +266,8 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 val all = vm.tracks.value
                 val selTrack = sel?.let { all[it] }
                 // Only draw the route when it checks out against the live position.
-                val checked = vm.enrichment.value?.route?.takeIf { r ->
-                    selTrack != null && FlightProgressCalc.compute(selTrack, r, now).verified
+                val checked = selTrack?.let { FlightProgressCalc.shownRoute(it, vm.enrichment.value?.route, now) }?.takeIf { r ->
+                    FlightProgressCalc.compute(selTrack, r, now).verified
                 }
                 val origin = checked?.origin
                 val dest = checked?.destination

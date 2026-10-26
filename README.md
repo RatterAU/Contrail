@@ -1,17 +1,19 @@
 <div align="center">
 
-<img src="docs/hero.svg" alt="Contrail — where did that plane come from, where's it going, and what is it? A live flight tracker for Android, showing Virgin Australia VA223 from Melbourne to Adelaide, on approach, landing in 6 minutes" width="100%">
+<img src="docs/hero.svg" alt="Contrail — where did that plane come from, where's it going, and what is it? A live flight tracker for Android and iPhone, showing Virgin Australia VA223 from Melbourne to Adelaide, on approach, landing in 6 minutes" width="100%">
 
 <br><br>
 
-**A flight tracker for Android with no ads, no paywalls and no nonsense.**
+**A flight tracker for Android and iPhone with no ads, no paywalls and no nonsense.**
 
 You see a plane. You tap it. You know **where it came from, where it's going, and exactly what it is.**
 
 <br>
 
 ![Android 10+](https://img.shields.io/badge/Android-10%2B-0B1B33?style=flat-square&logo=android&logoColor=white)
+![iOS 26+](https://img.shields.io/badge/iOS-26%2B-0B1B33?style=flat-square&logo=apple&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
+![Swift](https://img.shields.io/badge/Swift-SwiftUI-F05138?style=flat-square&logo=swift&logoColor=white)
 ![MIT](https://img.shields.io/badge/licence-MIT-555?style=flat-square)
 ![No ads](https://img.shields.io/badge/ads-none-1F7A4D?style=flat-square)
 ![No accounts](https://img.shields.io/badge/accounts-none-1F7A4D?style=flat-square)
@@ -55,7 +57,7 @@ Your phone talks straight to free public feeds. There's no server in between to 
 
 **See everything that's flying, right now.** Every aircraft in range is on the map, coloured by altitude and pointing the way it's going. Airliners carry their airline's tail logo. Between position updates each plane glides along at its real speed and heading instead of jumping, so the map looks alive rather than refreshing.
 
-**Routes it can prove.** Most trackers look up a route by flight number and show it as fact, even when the aircraft is flying something else that day. Contrail checks the plane's position and heading against the route first. If they don't agree, it says *Route unconfirmed* instead of guessing. Landing times are always marked *est.*, because that's what they are.
+**Routes it can prove.** Most trackers look up a route by flight number and show it as fact, even when the aircraft is flying something else that day. Contrail checks the plane's position and heading against the route first. If they don't agree, it says so instead of guessing. Airlines reuse callsigns, so the published route is sometimes simply wrong: Qatar's QTR65Q into Adelaide is listed everywhere as Doha to Colombo. Then Contrail reads the real route off where the plane actually flew: the airport its flown path started at, and the one it's on final approach to or has landed at. Landing times are always marked *est.*, because that's what they are.
 
 **Where it's actually been.** Tap a plane and its whole flown path is drawn back to the runway it left from, coloured by altitude. Beside it is a profile chart of altitude and speed for the whole flight, which you can scrub through.
 
@@ -104,7 +106,7 @@ Your phone talks straight to free public feeds. There's no server in between to 
 
 ## Install it
 
-There's no Play Store listing. It's a free side project, and you install it straight from this page. It takes about two minutes.
+There's no Play Store or App Store listing. It's a free side project. On Android you install it straight from this page in about two minutes. On iPhone you build it yourself in Xcode ([below](#on-an-iphone)).
 
 ### What you need
 
@@ -178,9 +180,33 @@ keyPassword=…
 
 </details>
 
+### On an iPhone
+
+There's an iPhone version too, in [`ios/`](ios). It isn't a copy of the Android app squeezed onto iOS: it's a native SwiftUI app with Apple Maps, Liquid Glass and sheets that slide up and stay out of the way the way they do in Maps. Same data, same rules about routes.
+
+<div align="center">
+
+<img src="docs/screenshots/ios/map.png" width="250" alt="iPhone map around Melbourne with live aircraft coloured by altitude">
+&nbsp;
+<img src="docs/screenshots/ios/aircraft.png" width="250" alt="iPhone aircraft sheet for Virgin Australia VA1292 from Cairns to Melbourne, 92% of the way, landing in an estimated 24 minutes">
+&nbsp;
+<img src="docs/screenshots/ios/airport.png" width="250" alt="iPhone Adelaide Airport sheet with live weather and runway 23 in use">
+
+</div>
+
+It isn't on the App Store, so you build it yourself on a Mac:
+
+1. Install [Xcode](https://apps.apple.com/app/xcode/id497799835), which is free.
+2. Download this repo and open `ios/Contrail.xcodeproj`.
+3. Plug in your iPhone, pick it as the destination, set your Apple ID as the signing team, and press Run.
+
+It needs iOS 26. With a free Apple ID, the app has to be re-run from Xcode every 7 days, and you can have at most 3 such apps on the phone at once.
+
+<sub>The project is generated from `ios/project.yml` by [XcodeGen](https://github.com/yonaskolb/XcodeGen). You only need it if you change that file.</sub>
+
 ## Under the hood
 
-Kotlin and Jetpack Compose, MapLibre for the map, Ktor for the network, and no backend. Live positions come in about once a second from two volunteer ADS-B networks that serve the same format. Everything else is looked up only when you tap something.
+Kotlin and Jetpack Compose with MapLibre on Android, SwiftUI and MapKit on iPhone, and no backend. Both apps share the same bundled airport data and the same logic, tested on each side. Live positions come in about once a second from two volunteer ADS-B networks that serve the same format. Everything else is looked up only when you tap something.
 
 ```mermaid
 flowchart LR

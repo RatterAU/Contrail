@@ -3,6 +3,7 @@ package app.contrail.data.static
 import android.content.Context
 import app.contrail.data.enrich.Airline
 import app.contrail.data.enrich.Airport
+import app.contrail.domain.Geo
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,9 @@ class StaticData(
 ) {
     private val byIcao = airports.associateBy { it.icao }
     private val byIata = airports.filter { !it.iata.isNullOrEmpty() }.associateBy { it.iata }
+    // A few rows carry a description instead of a town ("Private Airfield in the Shire of Campaspe").
+    private val named = airports.filter { a -> a.city.let { !it.isNullOrEmpty() && listOf("Airfield", "Airport", "Shire of").none(it::contains) } }
+    private val major = airports.filter { it.size == 'L' || it.size == 'M' }
     private val airlinesByIata = airlinesByIcao.values.filter { !it.iata.isNullOrEmpty() }.groupBy { it.iata!! }
 
     fun airport(code: String): Airport? = byIcao[code.uppercase()] ?: byIata[code.uppercase()]
@@ -52,11 +56,18 @@ class StaticData(
         return cs.take(3).takeIf { cs.length >= 4 && cs[3].isDigit() && it.all { c -> c in 'A'..'Z' } }
     }
 
-    /** Nearest airport with a recognisable name, for "12 km NE of Gawler". Scans ~18k rows; call off the main thread. */
+    /**
+     * Nearest airport with a town name, for "12 km NE of Gawler" (unnamed strips would give "Private Airfield in the
+     * Shire of Campaspe"). Scans ~18k rows; call off the main thread.
+     */
     fun nearestPlace(lat: Double, lon: Double): Airport? {
         val k = kotlin.math.cos(Math.toRadians(lat))
-        return airports.minByOrNull { a -> (a.lat - lat).let { it * it } + ((a.lon - lon) * k).let { it * it } }
+        return named.minByOrNull { a -> (a.lat - lat).let { it * it } + ((a.lon - lon) * k).let { it * it } }
     }
+
+    /** The closest large or medium airport within [nm], for reading a route off a flown path. */
+    fun majorAirport(lat: Double, lon: Double, nm: Double): Airport? =
+        major.minByOrNull { Geo.distanceNm(lat, lon, it.lat, it.lon) }?.takeIf { Geo.distanceNm(lat, lon, it.lat, it.lon) <= nm }
 
     /** IATA airline code → candidate ICAO codes (IATA codes are reused, so there can be several). */
     fun icaoForIataAirline(iata: String): List<String> = airlinesByIata[iata.uppercase()].orEmpty().mapNotNull { it.icao }
