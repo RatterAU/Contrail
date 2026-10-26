@@ -10,6 +10,7 @@
 		01291D40CD8699A526444D85 /* Units.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB99D50E369BA275DC3C9AF /* Units.swift */; };
 		03EABCE2815FF519E1C7DD11 /* FlightProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A22F94E6C229CF99CF59BD3 /* FlightProgress.swift */; };
 		0984C1886219053A63BAAADC /* FlightInsights.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF13461001BD6978FED7767F /* FlightInsights.swift */; };
+		0FDEC2BAC3B1636036A3AB16 /* ReadmeShots.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8829F88D08D78D0FB92D9F4 /* ReadmeShots.swift */; };
 		102C83E6915ACAEE1EFA68D7 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6D02EBD3CB4C804C6492F0D /* Models.swift */; };
 		1986E64219A407DEAA9BD347 /* RouteShots.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F8F81655AF056C40EEE8153 /* RouteShots.swift */; };
 		1EE18FF914BE0DBF1A058F0D /* Panels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44DFDD497A682D1800FDDF16 /* Panels.swift */; };
@@ -97,11 +98,12 @@
 		7EA77DCEB0733EE20A1F3525 /* SkyGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkyGeometry.swift; sourceTree = "<group>"; };
 		7F8F81655AF056C40EEE8153 /* RouteShots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteShots.swift; sourceTree = "<group>"; };
 		80A584B7A69AC08C806EE0D2 /* AirlineLogos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirlineLogos.swift; sourceTree = "<group>"; };
-		810C09FC241F92A75EE62A7E /* Contrail.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Contrail.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		810C09FC241F92A75EE62A7E /* Contrail.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Contrail.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		81A1095F422BE887E7F0640B /* FeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedTests.swift; sourceTree = "<group>"; };
 		8543BE6551C8018C1DF4F1E0 /* AirportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirportSheet.swift; sourceTree = "<group>"; };
 		88A36DF63C3CAE155CE4B0F6 /* FlightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightTests.swift; sourceTree = "<group>"; };
 		998E3C80BAE505552B22A2F5 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
+		A8829F88D08D78D0FB92D9F4 /* ReadmeShots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadmeShots.swift; sourceTree = "<group>"; };
 		AD1F5FB56CA9F061E7C769E7 /* MainSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainSheet.swift; sourceTree = "<group>"; };
 		AF4DCC2625A451EB1BD57E09 /* ContrailApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContrailApp.swift; sourceTree = "<group>"; };
 		B6D02EBD3CB4C804C6492F0D /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -119,6 +121,7 @@
 		18AA1A512B9947AEF09184AD /* ContrailUITests */ = {
 			isa = PBXGroup;
 			children = (
+				A8829F88D08D78D0FB92D9F4 /* ReadmeShots.swift */,
 				7F8F81655AF056C40EEE8153 /* RouteShots.swift */,
 				E251A488DEF22427A0818D30 /* Tour.swift */,
 			);
@@ -347,6 +350,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					76BD3171B1E954A2286D70CE = {
+						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
 					AE746EFAF28758219CA089D6 = {
@@ -398,6 +402,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0FDEC2BAC3B1636036A3AB16 /* ReadmeShots.swift in Sources */,
 				1986E64219A407DEAA9BD347 /* RouteShots.swift in Sources */,
 				712180DEAB411B063900A368 /* Tour.swift in Sources */,
 			);
@@ -659,7 +664,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = CX7Y9N9478;
 				INFOPLIST_FILE = Contrail/App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -696,7 +700,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = CX7Y9N9478;
 				INFOPLIST_FILE = Contrail/App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (

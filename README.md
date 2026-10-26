@@ -186,11 +186,11 @@ There's an iPhone version too, in [`ios/`](ios). It isn't a copy of the Android 
 
 <div align="center">
 
-<img src="docs/screenshots/ios/map.png" width="250" alt="iPhone map around Melbourne with live aircraft coloured by altitude">
+<img src="docs/screenshots/ios/map.png" width="250" alt="iPhone map of Melbourne at night with Rex flight ZL3577 selected: its flown path drawn from the runway, the dashed route ahead to Burnie, and the aircraft sheet half open below">
 &nbsp;
-<img src="docs/screenshots/ios/aircraft.png" width="250" alt="iPhone aircraft sheet for Virgin Australia VA1292 from Cairns to Melbourne, 92% of the way, landing in an estimated 24 minutes">
+<img src="docs/screenshots/ios/aircraft.png" width="250" alt="iPhone aircraft sheet for Rex ZL3577, Melbourne to Burnie: took off 5 minutes ago, lands in an estimated 51 minutes, climbing through 7,900 ft out of Melbourne, with a flight profile chart">
 &nbsp;
-<img src="docs/screenshots/ios/airport.png" width="250" alt="iPhone Adelaide Airport sheet with live weather and runway 23 in use">
+<img src="docs/screenshots/ios/airport.png" width="250" alt="iPhone Melbourne Airport sheet: live weather, runway 16 in use, and an arrivals board with Virgin flights on approach and en route">
 
 </div>
 
