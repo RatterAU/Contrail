@@ -31,10 +31,12 @@ struct RouteLegTests {
 struct PastFlightTests {
     @Test func onlyThisPlaneNewestFirst() {
         // A shard holds every aircraft whose hex starts 7c4e; blank airports were out of coverage.
-        let shard = "7c4ee8\tQFA1\tYSSY\t100\tWSSS\t580\n7c4ee8\tQFA2\tWSSS\t700\t\t1200\n7c4ee9\tVOZ1\tYMML\t50\tYSSY\t140\n"
+        let shard = "7c4ee8\tQFA1\tYSSY\t100\tWSSS\t580\n7c4ee8\tQFA2\tWSSS\t700\t\t~1200\n7c4ee9\tVOZ1\tYMML\t50\tYSSY\t140\n"
         let list = FlightHistory.parsePastFlights(shard, hex: "7c4ee8")
         #expect(list.map(\.callsign) == ["QFA2", "QFA1"])
         #expect(list[0].to == nil)
+        #expect(list[0].arrived == 1200 * 60_000 && !list[0].arrivedSeen) // "~": when it was last seen, not when it landed
+        #expect(list[1].arrivedSeen)
         #expect(list[1].departed == 100 * 60_000)
     }
 }

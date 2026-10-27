@@ -44,10 +44,13 @@ class HistoryTest {
 
     @Test fun pastFlightsAreThisPlanesOnlyNewestFirst() {
         // A shard holds every aircraft whose hex starts 7c4e; blank airports were out of coverage.
-        val shard = "7c4ee8\tQFA1\tYSSY\t100\tWSSS\t580\n7c4ee8\tQFA2\tWSSS\t700\t\t1200\n7c4ee9\tVOZ1\tYMML\t50\tYSSY\t140\n"
+        val shard = "7c4ee8\tQFA1\tYSSY\t100\tWSSS\t580\n7c4ee8\tQFA2\tWSSS\t700\t\t~1200\n7c4ee9\tVOZ1\tYMML\t50\tYSSY\t140\n"
         val list = FlightHistory.parsePastFlights(shard, "7c4ee8")
         assertEquals(listOf("QFA2", "QFA1"), list.map { it.callsign })
         assertNull(list[0].to)
+        assertEquals(1200 * 60_000L, list[0].arrived)
+        assertEquals(false, list[0].arrivedSeen) // "~": when it was last seen, not when it landed
+        assertTrue(list[1].arrivedSeen)
         assertEquals(100 * 60_000L, list[1].departed)
     }
 }

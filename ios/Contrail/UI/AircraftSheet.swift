@@ -462,7 +462,7 @@ private struct PastFlights: View {
     private func row(_ f: PastFlight) -> some View {
         let data = StaticData.now()
         let from = f.from.flatMap { data?.airport($0) }, to = f.to.flatMap { data?.airport($0) }
-        // Each end in its airport's local time; an unknown end is where the plane was first or last seen.
+        // Each end in its airport's local time, and only when the takeoff or landing was seen.
         let fromZone = from?.tz.flatMap(TimeZone.init(identifier:)) ?? .current
         let toZone = to?.tz.flatMap(TimeZone.init(identifier:)) ?? .current
         var dayStyle = Date.FormatStyle.dateTime.weekday(.abbreviated).day().month(.abbreviated)
@@ -474,8 +474,10 @@ private struct PastFlights: View {
                 Text([day, f.callsign].compactMap { $0 }.joined(separator: " · ")).font(.footnote).foregroundStyle(.secondary)
             }
             Spacer()
-            Text("\(Fmt.current.time(f.departed, zone: fromZone))–\(Fmt.current.time(f.arrived, zone: toZone))")
-                .monospacedDigit().foregroundStyle(.secondary)
+            let dep = Fmt.current.time(f.departed, zone: fromZone), arr = Fmt.current.time(f.arrived, zone: toZone)
+            if let times = f.departedSeen && f.arrivedSeen ? "\(dep)–\(arr)" : f.departedSeen ? "Dep \(dep)" : f.arrivedSeen ? "Arr \(arr)" : nil {
+                Text(times).monospacedDigit().foregroundStyle(.secondary)
+            }
         }
     }
 }

@@ -372,7 +372,7 @@ private fun PastFlights(hex: String) {
             (if (all) list else list.take(5)).forEach { f ->
                 val from = f.from?.let { data?.airport(it) }
                 val to = f.to?.let { data?.airport(it) }
-                // Each end in its airport's local time; an unknown end is where the plane was first or last seen.
+                // Each end in its airport's local time, and only when the takeoff or landing was seen.
                 val dep = Instant.ofEpochMilli(f.departed).atZone(from?.tz?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault())
                 val arr = Instant.ofEpochMilli(f.arrived).atZone(to?.tz?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault())
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -381,7 +381,13 @@ private fun PastFlights(hex: String) {
                             style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(listOfNotNull(dep.format(DAY), f.callsign).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                     }
-                    Text("${Fmt.time(dep)}–${Fmt.time(arr)}", style = MaterialTheme.typography.bodyMedium.merge(Numeric), color = cs.onSurfaceVariant)
+                    val times = when {
+                        f.departedSeen && f.arrivedSeen -> "${Fmt.time(dep)}–${Fmt.time(arr)}"
+                        f.departedSeen -> "Dep ${Fmt.time(dep)}"
+                        f.arrivedSeen -> "Arr ${Fmt.time(arr)}"
+                        else -> null
+                    }
+                    times?.let { Text(it, style = MaterialTheme.typography.bodyMedium.merge(Numeric), color = cs.onSurfaceVariant) }
                 }
             }
             if (list.size > 5 && !all) {

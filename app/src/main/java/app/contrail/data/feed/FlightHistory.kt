@@ -18,8 +18,19 @@ import kotlinx.serialization.json.longOrNull
 import kotlin.math.abs
 import kotlin.math.cos
 
-/** One earlier flight: airports are ICAO idents from the bundled table, null where the plane wasn't seen there. */
-data class PastFlight(val callsign: String?, val from: String?, val departed: Long, val to: String?, val arrived: Long)
+/**
+ * One earlier flight: airports are ICAO idents from the bundled table, null where the plane wasn't seen there. Times
+ * are takeoff and landing when seen; otherwise only when the plane was first or last seen, good for the date alone.
+ */
+data class PastFlight(
+    val callsign: String?,
+    val from: String?,
+    val departed: Long,
+    val to: String?,
+    val arrived: Long,
+    val departedSeen: Boolean = true,
+    val arrivedSeen: Boolean = true,
+)
 
 /**
  * The path a plane flew before the app saw it, from OpenSky's anonymous tracks endpoint (keyless;
@@ -77,14 +88,15 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
         private const val PAST_CACHE_MS = 60 * 60_000L // the files change once a day
         private const val PAST_URL = "https://ratterau.github.io/Contrail/h/"
 
-        /** Lines are `hex  callsign  from  departed  to  arrived`, tab-separated, times in unix minutes. */
+        /** Lines are `hex  callsign  from  departed  to  arrived`, tab-separated, times in unix minutes, "~" if not seen. */
         fun parsePastFlights(text: String, hex: String): List<PastFlight> = text.lineSequence()
             .filter { it.startsWith(hex) }
             .mapNotNull { line ->
                 val c = line.split('\t')
                 if (c.size < 6 || c[0] != hex) return@mapNotNull null
-                PastFlight(c[1].ifEmpty { null }, c[2].ifEmpty { null }, (c[3].toLongOrNull() ?: return@mapNotNull null) * 60_000,
-                    c[4].ifEmpty { null }, (c[5].toLongOrNull() ?: return@mapNotNull null) * 60_000)
+                PastFlight(c[1].ifEmpty { null }, c[2].ifEmpty { null }, (c[3].removePrefix("~").toLongOrNull() ?: return@mapNotNull null) * 60_000,
+                    c[4].ifEmpty { null }, (c[5].removePrefix("~").toLongOrNull() ?: return@mapNotNull null) * 60_000,
+                    !c[3].startsWith('~'), !c[5].startsWith('~'))
             }
             .sortedByDescending { it.departed }
             .toList()

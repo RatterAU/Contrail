@@ -141,13 +141,16 @@ actor EnrichmentService {
     }
 }
 
-/// One earlier flight: airports are ICAO idents from the bundled table, nil where the plane wasn't seen there.
+/// One earlier flight: airports are ICAO idents from the bundled table, nil where the plane wasn't seen there. Times
+/// are takeoff and landing when seen; otherwise only when the plane was first or last seen, good for the date alone.
 struct PastFlight: Equatable, Sendable {
     var callsign: String?
     var from: String?
     var departed: Millis
     var to: String?
     var arrived: Millis
+    var departedSeen = true
+    var arrivedSeen = true
 }
 
 /// The path a plane flew before the app saw it, from OpenSky's anonymous tracks endpoint (keyless; ~400 requests a
@@ -178,14 +181,14 @@ actor FlightHistory {
         return FlightHistory.parsePastFlights(text, hex: h)
     }
 
-    /// Lines are `hex  callsign  from  departed  to  arrived`, tab-separated, times in unix minutes.
+    /// Lines are `hex  callsign  from  departed  to  arrived`, tab-separated, times in unix minutes, "~" if not seen.
     static func parsePastFlights(_ text: String, hex: String) -> [PastFlight] {
         text.split(separator: "\n").compactMap { line -> PastFlight? in
             guard line.hasPrefix(hex) else { return nil }
             let c = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard c.count >= 6, c[0] == hex, let t0 = Millis(c[3]), let t1 = Millis(c[5]) else { return nil }
+            guard c.count >= 6, c[0] == hex, let t0 = Millis(c[3].trimmingPrefix("~")), let t1 = Millis(c[5].trimmingPrefix("~")) else { return nil }
             return PastFlight(callsign: c[1].isEmpty ? nil : c[1], from: c[2].isEmpty ? nil : c[2], departed: t0 * 60_000,
-                              to: c[4].isEmpty ? nil : c[4], arrived: t1 * 60_000)
+                              to: c[4].isEmpty ? nil : c[4], arrived: t1 * 60_000, departedSeen: !c[3].hasPrefix("~"), arrivedSeen: !c[5].hasPrefix("~"))
         }
         .sorted { $0.departed > $1.departed }
     }

@@ -7,8 +7,10 @@ small files on GitHub Pages, one per first four hex digits (site/h/7c4e.txt, a f
 
     hex  callsign  from  departed  to  arrived
 
-Airports are ICAO idents from the app's airports.tsv, blank when the plane was first or last seen away from one
-(coverage gaps); times are unix minutes. Day files (site/d/YYYY-MM-DD.tsv.gz) carry history from run to run, so no
+Only what was seen is stated. An airport (ICAO ident from the app's airports.tsv) is given only when the plane was
+seen on the ground there or below 2000 ft above it nearby; otherwise it's blank. Times are unix minutes of takeoff and
+landing, seen happening or within about a minute (below 1500 ft above the field); otherwise the time is prefixed "~"
+and is only when the plane was first or last seen, good for the date and nothing more. Day files (site/d/YYYY-MM-DD.tsv.gz) carry history from run to run, so no
 data is ever committed to git.
 
     curl … | python3 tools/history.py legs 1792972800 out.tsv.gz      # day start (unix s), from the tar on stdin
@@ -38,29 +40,31 @@ def load_airports(path=AIRPORTS):
 
 
 def airport_at(grid, lat, lon, alt):
-    """The airport a plane is at or just above (on the ground, or under 3000 ft above the field), else ''.
-    Altitude can be missing (None); then distance alone decides."""
-    best, best_d = "", 1e9
+    """(ident, height above it in ft) for the airport a plane is on, or below 2000 ft above nearby; else ('', 0).
+    A missing altitude (None) can't confirm anything, so it matches nothing."""
+    if alt is None:
+        return "", 0
+    best, best_d, best_agl = "", 1e9, 0
     for dy in (-1, 0, 1):
         for dx in (-1, 0, 1):
             for ident, alat, alon, elev, size in grid.get((math.floor(lat) + dy, math.floor(lon) + dx), ()):
-                agl = alt - elev if isinstance(alt, int) else 0
-                if agl > 3000:
+                agl = 0 if alt == "ground" else alt - elev
+                if agl > 2000:
                     continue
                 d = math.hypot(lat - alat, (lon - alon) * math.cos(math.radians(lat))) * 60  # nm
-                # Big airports win, out to the distance of a 3° approach at that height (3000 ft: 11 nm), so an
-                # airliner isn't put at a strip next to the runway.
-                limit, score = (5 + max(agl, 0) / 500, d) if size in ("L", "M") else (3, d + 3)
+                # Big airports win, out to a 3° approach at that height (2000 ft: 8 nm), so an airliner isn't put at
+                # a strip next to the runway; small ones only within 2 nm.
+                limit, score = (4 + max(agl, 0) / 500, d) if size in ("L", "M") else (2, d + 4)
                 if d <= limit and score < best_d:
-                    best, best_d = ident, score
-    return best
+                    best, best_d, best_agl = ident, score, agl
+    return best, best_agl
 
 
 def unseen_stop(a, b):
     """Over 30 min unseen between a and b, and a was last seen descending low or b reappears climbing low: it landed
     and took off again outside coverage. Parked on the ground, or high on both sides (oceans), it's the same flight."""
     low = lambda p: isinstance(p[3], int) and p[3] < 10000
-    return b[0] - a[0] > 1800 and (low(a) or (low(b) and (b[7] or 0) > 0))
+    return b[0] - a[0] > 1800 and ((low(a) and (a[7] or 0) <= 0) or (low(b) and (b[7] or 0) > 0))
 
 
 def callsign(p):
@@ -86,25 +90,59 @@ def splits(trace):
     return sorted(out)
 
 
+def end(grid, pts, i, j, day_start, arriving):
+    """One end of a flight: pts[i] is its first (or last) airborne point, pts[j] the ground point before (or after) it,
+    if any. Returns (airport, time): the airport it was on, or just above; the takeoff (or landing) time if that was
+    seen, within 2 min on the ground or below 1500 ft above the field, else "~" and when it was first (or last) seen.
+    Seen low without the ground, it must be heading that way: not climbing into an arrival, not descending out of a
+    departure."""
+    a, g = pts[i], pts[j] if 0 <= j < len(pts) else None
+    if g:
+        ap, agl = airport_at(grid, g[1], g[2], "ground")
+        seen = abs(a[0] - g[0]) <= 120 or 0 < airport_at(grid, a[1], a[2], a[3])[1] <= 1500
+    elif ((a[7] or 0) > 0) == arriving and (a[7] or 0) != 0:
+        ap, agl = "", 0
+    else:
+        ap, agl = airport_at(grid, a[1], a[2], a[3])
+        seen = bool(ap) and agl <= 1500
+    t = int((day_start + a[0]) // 60)
+    return ap, f"{t}" if ap and seen else f"~{t}"
+
+
+def minutes(t):
+    return int(t.lstrip("~"))
+
+
+def nm(a, b):
+    return math.hypot(a[1] - b[1], (a[2] - b[2]) * math.cos(math.radians(a[1]))) * 60
+
+
 def legs(trace, day_start, grid):
-    """Flights in one aircraft's day: (callsign, from, departed min, to, arrived min)."""
+    """Flights in one aircraft's day: (callsign, from, departed, to, arrived), times as `end` gives them.
+
+    A departure that wasn't seen is taken from the previous flight's seen landing only when there was no time for an
+    unseen flight in between: any stop elsewhere costs at least the straight line at 550 kt plus 15 min on the ground,
+    so a gap shorter than that means it left from where it landed. The time stays unknown."""
     out = []
+    landed = None  # (airport, last airborne point) of the previous flight, when where it landed is known
     bounds = [0] + splits(trace) + [len(trace)]
-    for start, end in zip(bounds, bounds[1:]):
-        pts = trace[start:end]
-        air = [p for p in pts if p[3] != "ground"]
+    for start, stop in zip(bounds, bounds[1:]):
+        pts = trace[start:stop]
+        air = [k for k, p in enumerate(pts) if p[3] != "ground"]
         if not air:
             continue  # taxiing only
-        first, last = pts[0], pts[-1]
+        i0, i1 = air[0], air[-1]
         cs = next((c for c in map(callsign, pts) if c), "")
-        dep, arr = airport_at(grid, first[1], first[2], first[3]), airport_at(grid, last[1], last[2], last[3])
-        t0, t1 = first[0], last[0]
-        # Unknown ends are kept only at the day's edges, where they may join the neighbouring day's half (see merge).
-        if not dep and not arr and t0 > 300 and t1 < 86100:
+        dep, t0 = end(grid, pts, i0, i0 - 1, day_start, False)
+        arr, t1 = end(grid, pts, i1, i1 + 1 if i1 + 1 < len(pts) else -1, day_start, True)
+        if not dep and landed and pts[i0][0] - landed[1][0] < nm(landed[1], pts[i0]) / 550 * 3600 + 900:
+            dep = landed[0]
+        # Timing from its last sighting, not the unseen touchdown, only makes the gap longer: still safe.
+        landed = (arr, pts[i1]) if arr else None
+        # No airport at either end: kept only at the day's edges, where it may join the neighbouring day's half.
+        if not dep and not arr and pts[0][0] > 300 and pts[-1][0] < 86100:
             continue
-        if not (dep or arr) and air[-1][0] - air[0][0] < 300:
-            continue
-        out.append((cs, dep, int((day_start + t0) // 60), arr, int((day_start + t1) // 60)))
+        out.append((cs, dep, t0, arr, t1))
     return out
 
 
@@ -128,7 +166,7 @@ def merge(rows):
     out = []
     for r in rows:
         p = out[-1] if out else None
-        if p and not p[3] and not r[1] and 0 <= r[2] - p[4] <= 30 and (not p[0] or not r[0] or p[0] == r[0]):
+        if p and not p[3] and not r[1] and 0 <= minutes(r[2]) - minutes(p[4]) <= 30 and (not p[0] or not r[0] or p[0] == r[0]):
             out[-1] = (p[0] or r[0], p[1], p[2], r[3], r[4])
         else:
             out.append(r)
@@ -142,10 +180,10 @@ def cmd_shards(days_dir, site_dir):
         with gzip.open(os.path.join(days_dir, f), "rt", encoding="utf-8") as fh:
             for line in fh:
                 h, cs, dep, t0, arr, t1 = line.rstrip("\n").split("\t")
-                by_hex[h].append((cs, dep, int(t0), arr, int(t1)))
+                by_hex[h].append((cs, dep, t0, arr, t1))
     shards = defaultdict(list)
     for h, rows in by_hex.items():
-        for cs, dep, t0, arr, t1 in merge(sorted(rows, key=lambda r: r[2])):
+        for cs, dep, t0, arr, t1 in merge(sorted(rows, key=lambda r: minutes(r[2]))):
             shards[h[:4]].append(f"{h}\t{cs}\t{dep}\t{t0}\t{arr}\t{t1}\n")
     os.makedirs(os.path.join(site_dir, "h"), exist_ok=True)
     for k, lines in shards.items():
@@ -161,24 +199,34 @@ if __name__ == "__main__":
         cmd_shards(sys.argv[2], sys.argv[3])
     elif sys.argv[1] == "test":
         g = load_airports()
-        assert airport_at(g, -34.945, 138.531, "ground") == "YPAD"   # Adelaide
-        assert airport_at(g, -34.945, 138.531, 9000) == ""            # overflying it
-        assert airport_at(g, -34.945, 138.531, None) == "YPAD"
-        # Sydney to Singapore and back, the second leg flagged as a new one; the third piece taxis only.
-        t = [[0, -33.95, 151.18, "ground", 0, 0, 0, 0, {"flight": "QFA1    "}], [600, -33.0, 150.0, 20000, 400, 0, 0, 0, None],
-             [30000, 1.35, 103.99, "ground", 0, 0, 0, 0, None], [34000, 1.36, 103.99, "ground", 0, 0, 2, 0, None],
-             [34600, 2.0, 104.5, 15000, 400, 0, 0, 0, {"flight": "QFA2"}], [60000, -33.95, 151.18, "ground", 0, 0, 0, 0, None],
-             [70000, -33.95, 151.18, "ground", 0, 0, 2, 0, None]]
-        assert [(cs, a, b) for cs, a, _, b, _ in legs(t, 0, g)] == [("QFA1", "YSSY", "WSSS"), ("QFA2", "WSSS", "YSSY")]
+        assert airport_at(g, -34.945, 138.531, "ground")[0] == "YPAD"  # Adelaide
+        assert airport_at(g, -34.945, 138.531, 9000)[0] == ""           # overflying it
+        assert airport_at(g, -34.945, 138.531, None)[0] == ""           # no altitude, no claim
+        P = lambda t, lat, lon, alt, flags=0, cs=None, vr=0: [t, lat, lon, alt, 0, 0, flags, vr, {"flight": cs} if cs else None]
+        # Sydney to Singapore, takeoff and landing both seen; then back, with the landing seen only at 1800 ft
+        # 6 nm out (airport known, time not); then taxiing only.
+        t = [P(0, -33.95, 151.18, "ground", cs="QFA1  "), P(60, -33.96, 151.17, 300), P(900, -30.0, 145.0, 35000),
+             P(29000, 0.0, 105.0, 35000), P(30000, 1.36, 104.0, 500), P(30060, 1.35, 103.99, "ground"),
+             P(34000, 1.36, 103.99, "ground", 2), P(34100, 1.37, 104.0, 400, cs="QFA2"), P(35000, -5.0, 110.0, 35000),
+             P(59000, -33.0, 150.0, 20000), P(60000, -33.95, 151.29, 1800), P(70000, -33.95, 151.18, "ground", 2)]
+        assert legs(t, 0, g) == [("QFA1", "YSSY", "1", "WSSS", "500"), ("QFA2", "WSSS", "568", "YSSY", "~1000")]
+        # First seen at cruise, last seen landing: origin unknown, its time only a date.
+        t = [P(0, -20.0, 140.0, 35000, cs="QFA3"), P(5000, -33.96, 151.17, 300), P(5050, -33.95, 151.18, "ground")]
+        assert legs(t, 0, g) == [("QFA3", "", "~0", "YSSY", "83")]
+        # Landed at Sydney, then first seen 10 min later climbing 40 nm away: it can only have left Sydney (an extra
+        # stop needs 15 min on the ground alone). Seen 3 h later instead, it could have been anywhere in between.
+        for later, want in ((600, "YSSY"), (10800, "")):
+            t = [P(0, -33.0, 150.5, 20000, cs="QFA5"), P(900, -33.96, 151.17, 300), P(960, -33.95, 151.18, "ground"),
+                 P(1000, -33.95, 151.18, "ground", 2, cs="QFA6"), P(960 + later, -33.6, 150.5, 9000, vr=2000), P(960 + later + 3000, -27.4, 153.1, 300),
+                 P(960 + later + 3060, -27.38, 153.12, "ground")]
+            assert legs(t, 0, g)[1][1:2] == (want,) and legs(t, 0, g)[1][2].startswith("~"), legs(t, 0, g)
         # Down low at Sydney, unseen for an hour, then climbing out of Sydney again: two flights.
-        t = [[0, -33.0, 150.0, 20000, 400, 0, 0, 0, None], [100, -33.95, 151.18, 2000, 150, 0, 0, 0, None],
-             [4000, -33.95, 151.18, 1500, 150, 0, 0, 0, None], [4500, -33.0, 150.0, 20000, 400, 0, 0, 0, None]]
+        t = [P(0, -33.0, 150.0, 20000), P(100, -33.95, 151.18, 1000, vr=-700), P(4000, -33.95, 151.18, 900, vr=1500), P(4500, -33.0, 150.0, 20000)]
         assert [(a, b) for _, a, _, b, _ in legs(t, 0, g)] == [("", "YSSY"), ("YSSY", "")]
         # Out and back with the turnaround unseen at cruise height: the new callsign splits it at the long gap.
-        t = [[0, -33.95, 151.18, "ground", 0, 0, 0, 0, {"flight": "QFA1"}], [600, -33.0, 150.0, 30000, 400, 0, 0, 0, None],
-             [9000, -20.0, 140.0, 30000, 400, 0, 0, 0, None], [9100, -20.1, 140.1, 30000, 400, 0, 0, 0, {"flight": "QFA2"}],
-             [20000, -33.95, 151.18, "ground", 0, 0, 0, 0, None]]
+        t = [P(0, -33.95, 151.18, "ground", cs="QFA1"), P(60, -33.95, 151.17, 300, vr=2000), P(9000, -20.0, 140.0, 30000),
+             P(9100, -20.1, 140.1, 30000, cs="QFA2"), P(20000, -33.96, 151.17, 300), P(20060, -33.95, 151.18, "ground")]
         assert [(cs, a, b) for cs, a, _, b, _ in legs(t, 0, g)] == [("QFA1", "YSSY", ""), ("QFA2", "", "YSSY")]
         # A flight split at midnight UTC joins up.
-        assert merge([("QFA1", "YSSY", 100, "", 1439), ("QFA1", "", 1440, "EGLL", 2000)]) == [("QFA1", "YSSY", 100, "EGLL", 2000)]
+        assert merge([("QFA1", "YSSY", "100", "", "~1439"), ("QFA1", "", "~1440", "EGLL", "2000")]) == [("QFA1", "YSSY", "100", "EGLL", "2000")]
         print("ok")
