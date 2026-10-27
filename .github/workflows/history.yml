@@ -1,0 +1,66 @@
+# Past flights for the app (tools/history.py): once a day, turn adsb.lol's openly licensed history dump for
+# yesterday into small per-aircraft shards on GitHub Pages. Nothing is committed: earlier days are carried over
+# from the live site. One run a day, about 5 minutes.
+name: Past flights
+
+on:
+  schedule:
+    - cron: "23 7 * * *" # adsb.lol publishes yesterday's dump around 03:30 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: history
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            tools/history.py
+            app/src/main/assets/airports.tsv
+          sparse-checkout-cone-mode: false
+
+      - name: Build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 tools/history.py test
+          site=$(gh api "repos/$GITHUB_REPOSITORY/pages" -q .html_url)
+          mkdir -p site/d
+          for i in $(seq 1 14); do
+            d=$(date -u -d "-$i day" +%F)
+            curl -fsS -o "site/d/$d.tsv.gz" "${site%/}/d/$d.tsv.gz" || rm -f "site/d/$d.tsv.gz"
+          done
+          repo=adsblol/globe_history_$(date -u -d yesterday +%Y)
+          tag=$(gh release list -R "$repo" --limit 30 --json tagName -q '[.[].tagName | select(test("-planes-readsb-prod-[0-9]+$"))][0]')
+          day=$(sed -E 's/^v([0-9]{4})\.([0-9]{2})\.([0-9]{2}).*/\1-\2-\3/' <<< "$tag")
+          if [ ! -f "site/d/$day.tsv.gz" ]; then
+            # Streamed: the ~4 GB tar never touches the disk.
+            for part in $(gh release view "$tag" -R "$repo" --json assets -q '.assets[].name' | sort); do
+              curl -fsSL "https://github.com/$repo/releases/download/$tag/$part"
+            done | python3 tools/history.py legs "$(date -u -d "$day" +%s)" "site/d/$day.tsv.gz"
+          fi
+          ls site/d | sort | head -n -14 | sed 's|^|site/d/|' | xargs -r rm
+          python3 tools/history.py shards site/d site
+          touch site/.nojekyll
+          du -sh site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
