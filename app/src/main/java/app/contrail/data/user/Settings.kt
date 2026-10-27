@@ -15,6 +15,7 @@ import app.contrail.domain.ClockStyle
 import app.contrail.domain.DistanceUnit
 import app.contrail.domain.SpeedUnit
 import app.contrail.domain.Units
+import app.contrail.domain.WindLevel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -22,6 +23,12 @@ data class MapPrefs(
     /** Null = follow the system theme. */
     val style: String? = null,
     val radar: Boolean = false,
+    /** Satellite cloud imagery (infrared, so it works at night). */
+    val clouds: Boolean = false,
+    /** SIGMET hazard areas: turbulence, icing, storms, volcanic ash, cyclones. */
+    val hazards: Boolean = false,
+    /** Animated wind at this level; null = off. */
+    val wind: WindLevel? = null,
     val airports: Boolean = true,
     val labels: Boolean = true,
     val allTrails: Boolean = false,
@@ -34,6 +41,9 @@ class SettingsRepository(private val context: Context) {
     private object K {
         val style = stringPreferencesKey("map_style")
         val radar = booleanPreferencesKey("radar")
+        val clouds = booleanPreferencesKey("clouds")
+        val hazards = booleanPreferencesKey("hazards")
+        val wind = stringPreferencesKey("wind")
         val airports = booleanPreferencesKey("airports")
         val labels = booleanPreferencesKey("labels")
         val allTrails = booleanPreferencesKey("all_trails")
@@ -72,6 +82,9 @@ class SettingsRepository(private val context: Context) {
     private fun Preferences.toMapPrefs() = MapPrefs(
         style = this[K.style],
         radar = this[K.radar] ?: false,
+        clouds = this[K.clouds] ?: false,
+        hazards = this[K.hazards] ?: false,
+        wind = WindLevel.entries.find { it.name == this[K.wind] },
         airports = this[K.airports] ?: true,
         labels = this[K.labels] ?: true,
         allTrails = this[K.allTrails] ?: false,
@@ -89,6 +102,9 @@ class SettingsRepository(private val context: Context) {
             val n = f(p.toMapPrefs())
             if (n.style == null) p.remove(K.style) else p[K.style] = n.style
             p[K.radar] = n.radar
+            p[K.clouds] = n.clouds
+            p[K.hazards] = n.hazards
+            if (n.wind == null) p.remove(K.wind) else p[K.wind] = n.wind.name
             p[K.airports] = n.airports
             p[K.labels] = n.labels
             p[K.allTrails] = n.allTrails

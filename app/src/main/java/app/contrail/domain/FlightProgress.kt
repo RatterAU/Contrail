@@ -76,10 +76,13 @@ object FlightProgressCalc {
         return ap.takeIf { close || Geo.angleDiff(trk, Geo.bearing(a.lat, a.lon, ap.lat, ap.lon)) <= 30 }
     }
 
-    /** The route to show: the published one when the position fits it, else one read off the flown path, else the published one. */
-    fun shownRoute(t: Track, listed: Route?, now: Long): Route? {
-        if (listed != null && compute(t, listed, now).verified) return listed
-        return StaticData.now()?.let { flownRoute(t, listed, it) } ?: listed
+    /**
+     * The route to show: the first of [legs] (adsb.lol, one per leg of a multi-stop flight) or the published one that
+     * fits the position, else one read off the flown path, else the published one (shown as not matching).
+     */
+    fun shownRoute(t: Track, listed: Route?, now: Long, legs: List<Route> = emptyList()): Route? {
+        (legs + listOfNotNull(listed)).firstOrNull { compute(t, it, now).verified }?.let { return it }
+        return StaticData.now()?.let { flownRoute(t, listed, it) } ?: listed ?: legs.singleOrNull()
     }
 
     fun compute(track: Track, route: Route, now: Long): FlightProgress {

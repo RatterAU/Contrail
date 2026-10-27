@@ -37,6 +37,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flowOn
+import app.contrail.domain.WindGrid
+import org.maplibre.geojson.FeatureCollection
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
@@ -98,6 +101,47 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Satellite cloud tile URLs, new every 10 min while clouds are on. */
+    val cloudTiles: StateFlow<List<String>> = prefs.map { it.clouds }.distinctUntilChanged()
+        .transformLatest { on ->
+            if (!on) { emit(emptyList()); return@transformLatest }
+            while (true) {
+                emit(CloudTiles.urls(System.currentTimeMillis() / 600_000))
+                delay(10 * 60_000)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** SIGMET areas as map features, refreshed every 10 min while hazards are on. */
+    val hazards: StateFlow<FeatureCollection?> = prefs.map { it.hazards }.distinctUntilChanged()
+        .transformLatest { on ->
+            if (!on) { emit(null); return@transformLatest }
+            while (true) {
+                runCatching { c.weather.sigmets() }.getOrNull()?.let { emit(MapController.hazardFeatures(it, System.currentTimeMillis() / 1000)) }
+                delay(10 * 60_000)
+            }
+        }
+        .flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** The visible map box, set when the camera stops; drives which wind points are fetched. */
+    val windArea = MutableStateFlow<Area?>(null)
+
+    /** Wind for the visible map while the wind layer is on; refetched as the view moves (points are cached an hour). */
+    @OptIn(FlowPreview::class)
+    val wind: StateFlow<WindGrid?> = combine(prefs.map { it.wind != null }.distinctUntilChanged(), windArea.debounce(600)) { on, area -> area.takeIf { on } }
+        .distinctUntilChanged()
+        .transformLatest { area ->
+            if (area == null) { emit(null); return@transformLatest }
+            val step = WindGrid.stepFor(area.north - area.south, if (area.east < area.west) area.east + 360 - area.west else area.east - area.west)
+            val points = WindGrid.points(area.south, area.west, area.north, area.east, step)
+            while (true) {
+                runCatching { c.weather.wind(points, step) }.getOrNull()?.let { emit(it) }
+                delay(60 * 60_000)
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Point on the selected plane's trail being inspected in the profile chart. */
     val scrub = MutableStateFlow<TrailPoint?>(null)

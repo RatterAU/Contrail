@@ -77,4 +77,6 @@ struct Enrichment: Hashable, Sendable {
     var info: AircraftInfo?
     var route: Route?
     var photos: [Photo]
+    /// Each leg of the callsign's route from adsb.lol (SYD-SIN-LHR is two), for when `route` doesn't fit or is missing.
+    var legs: [Route] = []
 }

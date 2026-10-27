@@ -45,6 +45,7 @@ import app.contrail.data.user.MapPrefs
 import app.contrail.domain.AircraftKind
 import app.contrail.domain.Filters
 import app.contrail.domain.Fmt
+import app.contrail.domain.WindLevel
 import app.contrail.ui.theme.InsetGroup
 import app.contrail.ui.theme.Numeric
 import app.contrail.ui.theme.Segmented
@@ -65,8 +66,20 @@ fun LayersSheet(prefs: MapPrefs, onChange: ((MapPrefs) -> MapPrefs) -> Unit) {
             { i -> onChange { it.copy(style = styles[i]) } },
         )
         Spacer(Modifier.height(20.dp))
-        InsetGroup(cell = cell) {
+        InsetGroup(header = "Weather", cell = cell) {
             row { ToggleRow("Rain radar", "Animated, last hour", prefs.radar) { v -> onChange { it.copy(radar = v) } } }
+            row { ToggleRow("Clouds", "Satellite, day and night, every 10 min", prefs.clouds) { v -> onChange { it.copy(clouds = v) } } }
+            row { ToggleRow("Hazards", "Turbulence, icing, storms, ash and cyclones", prefs.hazards) { v -> onChange { it.copy(hazards = v) } } }
+            row {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text("Wind", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(8.dp))
+                    val levels = listOf<WindLevel?>(null) + WindLevel.entries
+                    Segmented(listOf("Off") + WindLevel.entries.map { it.label }, levels.indexOf(prefs.wind), { i -> onChange { it.copy(wind = levels[i]) } })
+                }
+            }
+        }
+        InsetGroup(cell = cell) {
             row { ToggleRow("Airports", "Smaller airfields appear as you zoom in", prefs.airports) { v -> onChange { it.copy(airports = v) } } }
             row { ToggleRow("Callsign labels", "Shown when zoomed in", prefs.labels) { v -> onChange { it.copy(labels = v) } } }
             row { ToggleRow("Trails for every aircraft", "Paths recorded while the app is open", prefs.allTrails) { v -> onChange { it.copy(allTrails = v) } } }

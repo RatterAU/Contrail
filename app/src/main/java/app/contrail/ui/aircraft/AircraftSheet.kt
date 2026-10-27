@@ -70,6 +70,7 @@ import app.contrail.ContrailApp
 import app.contrail.data.enrich.AircraftInfo
 import app.contrail.data.enrich.Enrichment
 import app.contrail.data.enrich.Route
+import app.contrail.data.feed.PastFlight
 import app.contrail.data.static.StaticData
 import app.contrail.domain.Aircraft
 import app.contrail.domain.FlightInsights
@@ -89,7 +90,10 @@ import app.contrail.ui.theme.SystemGreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.Year
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 @Composable
@@ -106,7 +110,7 @@ fun AircraftSheet(
     val clock = remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(1000); clock.longValue = System.currentTimeMillis() } }
     val info = enrichment?.info
-    val route = FlightProgressCalc.shownRoute(track, enrichment?.route, System.currentTimeMillis())
+    val route = FlightProgressCalc.shownRoute(track, enrichment?.route, System.currentTimeMillis(), enrichment?.legs.orEmpty())
     val airlineIcao = StaticData.now()?.airlineCode(a.callsign) ?: route?.airline?.icao // the operator flying it (QantasLink, not Qantas)
     val airlineName = route?.airline?.name ?: StaticData.now()?.airlineForCallsign(a.callsign)?.name
 
@@ -150,6 +154,7 @@ fun AircraftSheet(
         }
         AboutAircraft(a, info, airlineName)
         Spacer(Modifier.height(12.dp))
+        PastFlights(a.hex)
         TechnicalDetails(track) { clock.longValue }
     }
 }
@@ -351,6 +356,44 @@ private fun AboutAircraft(a: Aircraft, info: AircraftInfo?, airline: String?) {
         }
     }
 }
+
+/** Earlier flights from the daily history (last 14 days, up to yesterday), newest first. Hidden when none are known. */
+@Composable
+private fun PastFlights(hex: String) {
+    val history = (LocalContext.current.applicationContext as ContrailApp).container.history
+    val flights by produceState<List<PastFlight>?>(null, hex) { value = history.past(hex) }
+    val list = flights?.takeIf { it.isNotEmpty() } ?: return
+    var all by rememberSaveable(hex) { mutableStateOf(false) }
+    val cs = MaterialTheme.colorScheme
+    val data = StaticData.now()
+    Surface(shape = MaterialTheme.shapes.medium, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("Past flights", style = MaterialTheme.typography.titleSmall)
+            (if (all) list else list.take(5)).forEach { f ->
+                val from = f.from?.let { data?.airport(it) }
+                val to = f.to?.let { data?.airport(it) }
+                // Each end in its airport's local time; an unknown end is where the plane was first or last seen.
+                val dep = Instant.ofEpochMilli(f.departed).atZone(from?.tz?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault())
+                val arr = Instant.ofEpochMilli(f.arrived).atZone(to?.tz?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault())
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("${from?.shortName ?: f.from ?: "Unknown"} → ${to?.shortName ?: f.to ?: "Unknown"}",
+                            style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(listOfNotNull(dep.format(DAY), f.callsign).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                    }
+                    Text("${Fmt.time(dep)}–${Fmt.time(arr)}", style = MaterialTheme.typography.bodyMedium.merge(Numeric), color = cs.onSurfaceVariant)
+                }
+            }
+            if (list.size > 5 && !all) {
+                Text("Show all ${list.size}", color = cs.primary, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.clickable { all = true })
+            }
+            Text("Last 14 days, up to yesterday · adsb.lol", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+        }
+    }
+    Spacer(Modifier.height(12.dp))
+}
+
+private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
 
 /** Label-over-value pairs in two columns. */
 @Composable

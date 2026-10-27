@@ -34,6 +34,11 @@ import org.maplibre.android.style.expressions.Expression.stop
 import org.maplibre.android.style.expressions.Expression.toColor
 import org.maplibre.android.style.expressions.Expression.zoom
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.android.style.layers.PropertyFactory.fillColor
+import org.maplibre.android.style.layers.PropertyFactory.fillOpacity
+import org.maplibre.android.style.expressions.Expression.geometryType
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.circleColor
@@ -75,6 +80,8 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import org.maplibre.geojson.Polygon
+import app.contrail.data.weather.Sigmet
 import kotlin.math.abs
 import app.contrail.domain.Aircraft
 import android.graphics.Paint
@@ -121,6 +128,11 @@ class MapController(
     private var style: Style? = null
     private var airports: FeatureCollection? = null
     private var radarTiles: List<String> = emptyList()
+    private var cloudTiles: List<String> = emptyList()
+    private var hazards: FeatureCollection = EMPTY
+
+    /** True from the start of any camera move until it settles; the wind particles hide meanwhile. */
+    val moving = MutableStateFlow(false)
     private var showAirports = true
     private var showLabels = true
     var currentStyle: MapStyle? = null
@@ -133,8 +145,9 @@ class MapController(
             isRotateGesturesEnabled = true
             isTiltGesturesEnabled = false
         }
-        map.addOnCameraIdleListener { viewport()?.let(onViewport) }
+        map.addOnCameraIdleListener { moving.value = false; viewport()?.let(onViewport) }
         map.addOnCameraMoveStartedListener { reason ->
+            moving.value = true
             if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) onUserGesture()
         }
         map.addOnMapClickListener { latLng ->
@@ -173,6 +186,8 @@ class MapController(
             st.transition = TransitionOptions(0, 0, false)
             sprites.forEach { (name, bmp) -> st.addImage(name, bmp) }
             addRadarLayers(st)
+            addCloudLayers(st)
+            addHazardLayers(st, s.dark)
             st.addSource(airports?.let { GeoJsonSource(AIRPORT_SOURCE, it) } ?: GeoJsonSource(AIRPORT_SOURCE))
             st.addSource(GeoJsonSource(ROUTE_SOURCE))
             st.addSource(GeoJsonSource(TRAIL_SOURCE))
@@ -326,14 +341,67 @@ class MapController(
     }
 
     private fun addRadarLayers(st: Style) {
-        // Radar sits right on top of the base map, below our airport and aircraft layers.
-        val ours = "$AIRPORT_LAYER_L-dot"
+        // Radar sits on the base map and clouds, below hazards and our airport and aircraft layers.
+        val ours = if (st.getLayer("hazard-fill") != null) "hazard-fill" else "$AIRPORT_LAYER_L-dot"
         radarTiles.forEachIndexed { i, url ->
             st.addSource(RasterSource("radar-$i", TileSet("2.2.0", url).apply { maxZoom = 7f }, 256))
             val layer = RasterLayer("radar-$i", "radar-$i").withProperties(rasterOpacity(if (i == radarTiles.lastIndex) RADAR_OPACITY else 0f))
             if (st.getLayer(ours) != null) st.addLayerBelow(layer, ours) else st.addLayer(layer)
         }
     }
+
+    /** Satellite cloud layers (see [CloudTiles]), under the radar; an empty list removes them. */
+    fun setClouds(tiles: List<String>) {
+        if (tiles == cloudTiles) return
+        val st = loaded()
+        st?.let { s -> cloudTiles.indices.forEach { i -> s.removeLayer("clouds-$i"); s.removeSource("clouds-$i") } }
+        cloudTiles = tiles
+        st?.let(::addCloudLayers)
+    }
+
+    private fun addCloudLayers(st: Style) {
+        val above = listOf("radar-0", "hazard-fill").firstOrNull { st.getLayer(it) != null } ?: "$AIRPORT_LAYER_L-dot"
+        cloudTiles.forEachIndexed { i, url ->
+            val (west, east) = CloudTiles.bounds[i]
+            st.addSource(RasterSource("clouds-$i", TileSet("2.2.0", url).apply { maxZoom = CloudTiles.MAX_ZOOM; setBounds(west, -85f, east, 85f) }, 256))
+            val layer = RasterLayer("clouds-$i", "clouds-$i").withProperties(rasterOpacity(0.85f))
+            if (st.getLayer(above) != null) st.addLayerBelow(layer, above) else st.addLayer(layer)
+        }
+    }
+
+    fun setHazards(fc: FeatureCollection) {
+        hazards = fc
+        loaded()?.getSourceAs<GeoJsonSource>(HAZARD_SOURCE)?.setGeoJson(fc)
+    }
+
+    /** SIGMET areas: a tinted fill, an outline, and the hazard and levels written in the middle. */
+    private fun addHazardLayers(st: Style, dark: Boolean) {
+        st.addSource(GeoJsonSource(HAZARD_SOURCE, hazards))
+        val below = "$AIRPORT_LAYER_L-dot"
+        fun add(layer: org.maplibre.android.style.layers.Layer) = if (st.getLayer(below) != null) st.addLayerBelow(layer, below) else st.addLayer(layer)
+        add(FillLayer("hazard-fill", HAZARD_SOURCE).withProperties(fillColor(toColor(get("color"))), fillOpacity(0.16f)).withFilter(eq(geometryType(), literal("Polygon"))))
+        add(LineLayer("hazard-line", HAZARD_SOURCE).withProperties(lineColor(toColor(get("color"))), lineWidth(1.5f), lineOpacity(0.9f)).withFilter(eq(geometryType(), literal("Polygon"))))
+        add(
+            SymbolLayer("hazard-label", HAZARD_SOURCE).withProperties(
+                textField(get("label")),
+                textFont(arrayOf("Noto Sans Bold")),
+                textSize(11f),
+                textColor(toColor(get("color"))),
+                textHaloColor(if (dark) "#E60B0F1A" else "#E6FFFFFF"),
+                textHaloWidth(1.5f),
+            ).withFilter(eq(geometryType(), literal("Point"))).apply { minZoom = 3f },
+        )
+    }
+
+    /** The visible map as a box; the whole world when zoomed far out. */
+    fun visibleArea(): Area {
+        val b = map.projection.visibleRegion.latLngBounds
+        return if (b.longitudeSpan >= 180) Area(maxOf(b.latitudeSouth, -80.0), -180.0, minOf(b.latitudeNorth, 80.0), 180.0)
+        else Area(b.latitudeSouth, b.longitudeWest, b.latitudeNorth, b.longitudeEast)
+    }
+
+    /** Map position under a screen point (px), for sampling the wind field. */
+    fun latLngAt(x: Float, y: Float): LatLng = map.projection.fromScreenLocation(android.graphics.PointF(x, y))
 
     fun showRadarFrame(index: Int) {
         val st = loaded() ?: return
@@ -451,6 +519,7 @@ class MapController(
         const val AIRPORT_LAYER_M = "airports-medium"
         const val AIRPORT_LAYER_S = "airports-small"
         private const val RADAR_OPACITY = 0.7f
+        const val HAZARD_SOURCE = "hazards"
 
         /** Shared so an empty source isn't re-pushed every frame (see [render]). */
         private val EMPTY = FeatureCollection.fromFeatures(emptyList())
@@ -573,6 +642,54 @@ class MapController(
                 run += b
             }
             flush()
+        }
+
+        /** SIGMETs still in force as polygons plus a label point at each one's centre. */
+        fun hazardFeatures(list: List<Sigmet>, nowSec: Long): FeatureCollection {
+            val out = ArrayList<Feature>()
+            for (h in list) for (area in h.areas) {
+                if (area.size < 3 || (h.validTimeTo ?: Long.MAX_VALUE) < nowSec) continue
+                val ring = area.map { Point.fromLngLat(it.lon, it.lat) }.let { if (it.first() == it.last()) it else it + it.first() }
+                val color = hazardColor(h.hazard)
+                out += Feature.fromGeometry(Polygon.fromLngLats(listOf(ring))).apply { addStringProperty("color", color) }
+                out += Feature.fromGeometry(Point.fromLngLat(area.map { it.lon }.average(), area.map { it.lat }.average())).apply {
+                    addStringProperty("color", color)
+                    addStringProperty("label", hazardLabel(h))
+                }
+            }
+            return if (out.isEmpty()) EMPTY else FeatureCollection.fromFeatures(out)
+        }
+
+        fun hazardColor(hazard: String) = when (hazard) {
+            "TURB" -> "#FF9F0A"
+            "ICE" -> "#64D2FF"
+            "TS" -> "#FF453A"
+            "VA" -> "#BF5AF2"
+            "TC" -> "#FF375F"
+            "MTW" -> "#FFD60A"
+            else -> "#8E8E93"
+        }
+
+        /** "Severe turbulence" over "FL250–FL380". Flight levels stay in feet whatever the units, as pilots use them. */
+        fun hazardLabel(h: Sigmet): String {
+            val sev = if (h.qualifier == "SEV") "Severe " else ""
+            val name = when (h.hazard) {
+                "TURB" -> "${sev}turbulence"
+                "ICE" -> "${sev}icing"
+                "TS" -> "Thunderstorms"
+                "VA" -> "Volcanic ash"
+                "TC" -> "Cyclone ${h.qualifier.orEmpty().lowercase().replaceFirstChar { it.uppercase() }}".trim()
+                "MTW" -> "${sev}mountain waves"
+                else -> h.hazard
+            }.replaceFirstChar { it.uppercase() }
+            fun fl(ft: Int) = if (ft <= 0) "SFC" else "FL%03d".format(ft / 100)
+            val levels = when {
+                h.base != null && h.top != null -> "${fl(h.base)}–${fl(h.top)}"
+                h.top != null -> "Up to ${fl(h.top)}"
+                h.base != null -> "Above ${fl(h.base)}"
+                else -> null
+            }
+            return listOfNotNull(name, levels).joinToString("\n")
         }
 
         fun scrubFeatures(p: TrailPoint?): FeatureCollection =

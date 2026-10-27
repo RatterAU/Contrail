@@ -18,13 +18,43 @@ import kotlinx.serialization.json.longOrNull
 import kotlin.math.abs
 import kotlin.math.cos
 
+/** One earlier flight: airports are ICAO idents from the bundled table, null where the plane wasn't seen there. */
+data class PastFlight(val callsign: String?, val from: String?, val departed: Long, val to: String?, val arrived: Long)
+
 /**
  * The path a plane flew before the app saw it, from OpenSky's anonymous tracks endpoint (keyless;
  * ~400 requests a day, so it's fetched once per tapped plane and cached). The readsb feeds' own
  * trace files are bot-protected.
+ *
+ * Earlier flights (up to yesterday, 14 days) come from this repo's own GitHub Pages: tools/history.py turns
+ * adsb.lol's daily open-data dump into one small file per first four hex digits.
  */
 class FlightHistory(private val http: HttpClient, private val clock: () -> Long = System::currentTimeMillis) {
     private val cache = HashMap<String, Pair<List<TrailPoint>?, Long>>()
+    // By shard, not plane: nearby planes often share one (Australian hexes all start 7c).
+    private val pastCache = HashMap<String, Pair<String, Long>>()
+
+    /** Earlier flights, newest first; empty if none are known, null if the request failed. */
+    suspend fun past(hex: String): List<PastFlight>? {
+        val now = clock()
+        val h = hex.lowercase()
+        val shard = h.take(4)
+        synchronized(pastCache) { pastCache[shard]?.takeIf { now - it.second < PAST_CACHE_MS } }?.let { return parsePastFlights(it.first, h) }
+        val text = try {
+            val res = http.get("$PAST_URL$shard.txt")
+            when {
+                res.status.isSuccess() -> res.bodyAsText()
+                res.status.value == 404 -> "" // nothing in this shard
+                else -> return null
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return null
+        }
+        synchronized(pastCache) { pastCache[shard] = text to now }
+        return parsePastFlights(text, h)
+    }
 
     /** The current flight's path, oldest first, or null if unknown, stale or the request failed. */
     suspend fun fetch(hex: String): List<TrailPoint>? {
@@ -44,6 +74,20 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
 
     companion object {
         private const val CACHE_MS = 10 * 60_000L
+        private const val PAST_CACHE_MS = 60 * 60_000L // the files change once a day
+        private const val PAST_URL = "https://ratterau.github.io/Contrail/h/"
+
+        /** Lines are `hex  callsign  from  departed  to  arrived`, tab-separated, times in unix minutes. */
+        fun parsePastFlights(text: String, hex: String): List<PastFlight> = text.lineSequence()
+            .filter { it.startsWith(hex) }
+            .mapNotNull { line ->
+                val c = line.split('\t')
+                if (c.size < 6 || c[0] != hex) return@mapNotNull null
+                PastFlight(c[1].ifEmpty { null }, c[2].ifEmpty { null }, (c[3].toLongOrNull() ?: return@mapNotNull null) * 60_000,
+                    c[4].ifEmpty { null }, (c[5].toLongOrNull() ?: return@mapNotNull null) * 60_000)
+            }
+            .sortedByDescending { it.departed }
+            .toList()
         private const val M_TO_FT = 3.28084
 
         /**

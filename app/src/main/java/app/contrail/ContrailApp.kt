@@ -22,7 +22,11 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.UserAgent
+import app.contrail.ui.map.CloudTiles
+import okhttp3.Dispatcher
+import okhttp3.OkHttpClient
 import org.maplibre.android.MapLibre
+import org.maplibre.android.module.http.HttpRequestUtil
 
 class ContrailApp : Application() {
     lateinit var container: AppContainer
@@ -31,6 +35,13 @@ class ContrailApp : Application() {
     override fun onCreate() {
         super.onCreate()
         MapLibre.getInstance(this)
+        // MapLibre's own client (20 requests per host, like its default) plus the satellite cloud recolouring.
+        HttpRequestUtil.setOkHttpClient(
+            OkHttpClient.Builder()
+                .dispatcher(Dispatcher().apply { maxRequestsPerHost = 20 })
+                .addInterceptor(CloudTiles.interceptor)
+                .build(),
+        )
         container = AppContainer(this)
         StaticData.preload(this, appScope)
         appScope.launch { container.settings.units.collect { Fmt.units = it } }

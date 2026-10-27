@@ -1,6 +1,6 @@
 import Foundation
 
-/// Keyless lookups: adsbdb.com (aircraft and callsign route) and airport-data.com (photos). Results are cached in
+/// Keyless lookups: adsbdb.com (aircraft and callsign route), adsb.lol (route legs) and airport-data.com (photos). Results are cached in
 /// memory per (hex, callsign); concurrent callers share one request.
 actor EnrichmentService {
     private var cache: [String: Enrichment] = [:]
@@ -17,9 +17,16 @@ actor EnrichmentService {
         let t = Task {
             async let db = try? EnrichmentService.adsbdb(hex, callsign)
             async let photos = (try? EnrichmentService.airportDataPhotos(hex)) ?? []
+            async let lol = EnrichmentService.legs(callsign)
             let (info, route, fallback) = await db ?? (nil, nil, nil)
             let p = await photos
-            return Enrichment(info: info, route: route, photos: p.isEmpty ? [fallback].compactMap { $0 } : p)
+            let legs = await lol.map { leg in
+                var l = leg
+                l.flightNumber = route?.flightNumber ?? leg.flightNumber
+                l.airline = route?.airline ?? leg.airline
+                return l
+            }
+            return Enrichment(info: info, route: route, photos: p.isEmpty ? [fallback].compactMap { $0 } : p, legs: legs)
         }
         inFlight[k] = t
         let e = await t.value
@@ -80,6 +87,28 @@ actor EnrichmentService {
         }
     }
 
+    /// adsb.lol's legs for a callsign; none if it's unknown (404) or the request fails.
+    private static func legs(_ callsign: String?) async -> [Route] {
+        guard let callsign, let (data, _) = try? await HTTP.get(url("https://api.adsb.lol/api/0/route/\(path(callsign))")!) else { return [] }
+        return parseAdsbLolLegs(data)
+    }
+
+    /// adsb.lol `/api/0/route/{callsign}`: its `_airports` in flight order, as one route per leg.
+    static func parseAdsbLolLegs(_ data: Data) -> [Route] {
+        guard let o = try? JSON.object(data), let cs = o.string("callsign") else { return [] }
+        let stops: [Airport] = ((o["_airports"] as? [JSONObject]) ?? []).compactMap { a in
+            guard let name = a.string("name"), let lat = a.double("lat"), let lon = a.double("lon") else { return nil }
+            let icao = a.string("icao")
+            // The bundled table adds time zone and size; keep the API's coordinates either way.
+            let s = icao.flatMap { StaticData.now()?.airport($0) }
+            return Airport(icao: icao, iata: a.string("iata"), name: name, city: a.string("location") ?? s?.city, country: s?.country,
+                           lat: lat, lon: lon, elevationFt: a.int("alt_feet"), tz: s?.tz, size: s?.size)
+        }
+        let airline = o.string("airline_code").flatMap { StaticData.now()?.airline($0) }
+        let number = o.string("number").flatMap { n in airline?.iata.map { $0 + n } }
+        return zip(stops, stops.dropFirst()).map { Route(callsign: cs, flightNumber: number, airline: airline, origin: $0, destination: $1) }
+    }
+
     private static func route(_ o: JSONObject) -> Route? {
         guard let origin = (o["origin"] as? JSONObject).flatMap(airport),
               let dest = (o["destination"] as? JSONObject).flatMap(airport),
@@ -112,10 +141,54 @@ actor EnrichmentService {
     }
 }
 
+/// One earlier flight: airports are ICAO idents from the bundled table, nil where the plane wasn't seen there.
+struct PastFlight: Equatable, Sendable {
+    var callsign: String?
+    var from: String?
+    var departed: Millis
+    var to: String?
+    var arrived: Millis
+}
+
 /// The path a plane flew before the app saw it, from OpenSky's anonymous tracks endpoint (keyless; ~400 requests a
 /// day, so it's fetched once per tapped plane and cached). The readsb feeds' own trace files are bot-protected.
+///
+/// Earlier flights (up to yesterday, 14 days) come from this repo's own GitHub Pages: tools/history.py turns
+/// adsb.lol's daily open-data dump into one small file per first four hex digits.
 actor FlightHistory {
     private var cache: [String: ([TrailPoint]?, Millis)] = [:]
+    /// By shard, not plane: nearby planes often share one (Australian hexes all start 7c).
+    private var pastCache: [String: (String, Millis)] = [:]
+
+    /// Earlier flights, newest first; empty if none are known, nil if the request failed.
+    func past(_ hex: String) async -> [PastFlight]? {
+        let now = Millis.now, h = hex.lowercased(), shard = String(h.prefix(4))
+        if let (text, at) = pastCache[shard], now - at < 3_600_000 { return FlightHistory.parsePastFlights(text, hex: h) } // files change daily
+        guard let url = URL(string: "https://ratterau.github.io/Contrail/h/\(shard).txt") else { return nil }
+        let text: String
+        do {
+            let (data, _) = try await HTTP.get(url)
+            text = String(decoding: data, as: UTF8.self)
+        } catch let e as HTTP.Status where e.code == 404 {
+            text = "" // nothing in this shard
+        } catch {
+            return nil
+        }
+        pastCache[shard] = (text, now)
+        return FlightHistory.parsePastFlights(text, hex: h)
+    }
+
+    /// Lines are `hex  callsign  from  departed  to  arrived`, tab-separated, times in unix minutes.
+    static func parsePastFlights(_ text: String, hex: String) -> [PastFlight] {
+        text.split(separator: "\n").compactMap { line -> PastFlight? in
+            guard line.hasPrefix(hex) else { return nil }
+            let c = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            guard c.count >= 6, c[0] == hex, let t0 = Millis(c[3]), let t1 = Millis(c[5]) else { return nil }
+            return PastFlight(callsign: c[1].isEmpty ? nil : c[1], from: c[2].isEmpty ? nil : c[2], departed: t0 * 60_000,
+                              to: c[4].isEmpty ? nil : c[4], arrived: t1 * 60_000)
+        }
+        .sorted { $0.departed > $1.departed }
+    }
     private static let cacheMs: Millis = 10 * 60_000
     private static let mToFt = 3.28084
 

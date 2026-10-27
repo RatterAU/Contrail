@@ -8,10 +8,34 @@ struct MapPrefs: Hashable, Codable, Sendable {
     var appearance = MapAppearance.auto
     var kind = MapKind.muted
     var radar = false
+    /// Satellite cloud imagery (infrared, so it works at night).
+    var clouds = false
+    /// SIGMET hazard areas: turbulence, icing, storms, volcanic ash, cyclones.
+    var hazards = false
+    /// Animated wind at this level; nil = off.
+    var wind: WindLevel?
     var airports = true
     var labels = true
     var allTrails = false
     var filters = Filters()
+}
+
+extension MapPrefs {
+    /// Keys missing from older saved settings take their defaults instead of failing the whole decode.
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = MapPrefs()
+        appearance = try c.decodeIfPresent(MapAppearance.self, forKey: .appearance) ?? d.appearance
+        kind = try c.decodeIfPresent(MapKind.self, forKey: .kind) ?? d.kind
+        radar = try c.decodeIfPresent(Bool.self, forKey: .radar) ?? d.radar
+        clouds = try c.decodeIfPresent(Bool.self, forKey: .clouds) ?? d.clouds
+        hazards = try c.decodeIfPresent(Bool.self, forKey: .hazards) ?? d.hazards
+        wind = try c.decodeIfPresent(WindLevel.self, forKey: .wind)
+        airports = try c.decodeIfPresent(Bool.self, forKey: .airports) ?? d.airports
+        labels = try c.decodeIfPresent(Bool.self, forKey: .labels) ?? d.labels
+        allTrails = try c.decodeIfPresent(Bool.self, forKey: .allTrails) ?? d.allTrails
+        filters = try c.decodeIfPresent(Filters.self, forKey: .filters) ?? d.filters
+    }
 }
 
 /// Preferences, saved to UserDefaults as JSON on every change. Each group is its own property so a view that reads

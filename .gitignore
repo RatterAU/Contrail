@@ -13,3 +13,6 @@ keystore.properties
 STATUS.md
 xcuserdata/
 *.xcresult
+
+# 4K promo masters: too big for the repo; the README uses the GIF and the 1080p MP4
+docs/promo/*-4k*.mp4

@@ -28,6 +28,7 @@ struct AircraftSheet: View {
                     if track.trail.count >= 3 { ProfileChart(track: track) }
                     if let photos = model.details?.photos, !photos.isEmpty { PhotoPager(photos: photos) }
                     AboutAircraft(a: track.aircraft, info: model.details?.info)
+                    PastFlights(hex: hex)
                     TechnicalDetails(a: track.aircraft)
                 } else {
                     VStack(spacing: 12) {
@@ -425,6 +426,56 @@ private struct AboutAircraft: View {
                 Divider()
                 ValueRow(label: "Owner", value: owner)
             }
+        }
+    }
+}
+
+// MARK: Past flights
+
+/// Earlier flights from the daily history (last 14 days, up to yesterday), newest first. Hidden when none are known.
+private struct PastFlights: View {
+    @Environment(AppModel.self) private var model
+    let hex: String
+    @State private var flights: [PastFlight] = []
+    @State private var all = false
+
+    var body: some View {
+        Group {
+            if !flights.isEmpty {
+                SectionTitle("Past flights")
+                Card {
+                    ForEach(Array((all ? flights : Array(flights.prefix(5))).enumerated()), id: \.offset) { i, f in
+                        if i > 0 { Divider() }
+                        row(f)
+                    }
+                    if flights.count > 5 && !all {
+                        Divider()
+                        Button("Show all \(flights.count)") { all = true }
+                    }
+                }
+                Text("Last 14 days, up to yesterday · adsb.lol").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
+            }
+        }
+        .task(id: hex) { flights = await model.history.past(hex) ?? [] }
+    }
+
+    private func row(_ f: PastFlight) -> some View {
+        let data = StaticData.now()
+        let from = f.from.flatMap { data?.airport($0) }, to = f.to.flatMap { data?.airport($0) }
+        // Each end in its airport's local time; an unknown end is where the plane was first or last seen.
+        let fromZone = from?.tz.flatMap(TimeZone.init(identifier:)) ?? .current
+        let toZone = to?.tz.flatMap(TimeZone.init(identifier:)) ?? .current
+        var dayStyle = Date.FormatStyle.dateTime.weekday(.abbreviated).day().month(.abbreviated)
+        dayStyle.timeZone = fromZone
+        let day = Date(timeIntervalSince1970: Double(f.departed) / 1000).formatted(dayStyle)
+        return HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(from?.shortName ?? f.from ?? "Unknown") → \(to?.shortName ?? f.to ?? "Unknown")").lineLimit(1)
+                Text([day, f.callsign].compactMap { $0 }.joined(separator: " · ")).font(.footnote).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text("\(Fmt.current.time(f.departed, zone: fromZone))–\(Fmt.current.time(f.arrived, zone: toZone))")
+                .monospacedDigit().foregroundStyle(.secondary)
         }
     }
 }

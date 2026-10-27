@@ -42,6 +42,13 @@ struct FlightProgress: Hashable, Sendable {
     /// The route read off where the plane has been, for when the published one is wrong (airlines reuse
     /// callsigns): a path that starts low near one big airport, and the plane now on the ground at another or on
     /// final approach to it.
+    /// The route to show: the first of `legs` (adsb.lol, one per leg of a multi-stop flight) or the published one that
+    /// fits the position, else one read off the flown path, else the published one (shown as not matching).
+    static func shownRoute(_ t: Track, listed: Route?, legs: [Route], now: Millis) -> Route? {
+        if let r = (legs + [listed].compactMap { $0 }).first(where: { compute(t, $0, now: now).verified }) { return r }
+        return StaticData.now().flatMap { flownRoute(t, listed: listed, data: $0) } ?? listed ?? (legs.count == 1 ? legs[0] : nil)
+    }
+
     static func flownRoute(_ t: Track, listed: Route?, data: StaticData) -> Route? {
         let a = t.aircraft
         guard let start = t.trail.first, start.onGround || (start.alt ?? .max) < 4000,

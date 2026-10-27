@@ -48,6 +48,13 @@ class SkyGeometryTest {
         assertEquals(0.0, pitch, 0.01)
     }
 
+    @Test fun declinationTurnsMagneticNorthIntoTrueBearing() {
+        // Camera on magnetic north where declination is 8° east: it faces 8° true.
+        val (heading, pitch) = SkyGeometry.cameraPointing(SkyGeometry.trueNorth(facingNorth, 8.0))
+        assertEquals(8.0, heading, 0.01)
+        assertEquals(0.0, pitch, 0.01)
+    }
+
     @Test fun projectionCentreRightAndBehind() {
         val centre = SkyGeometry.project(facingNorth, 0.0, 0.0, 60.0, 2.0)
         assertNotNull(centre)

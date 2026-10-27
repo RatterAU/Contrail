@@ -10,12 +10,20 @@ struct RootView: View {
     var body: some View {
         MapView(model: model)
             .ignoresSafeArea()
+            .overlay {
+                if let level = model.settings.map.wind {
+                    WindLayer(level: level).ignoresSafeArea().allowsHitTesting(false)
+                }
+            }
             .overlay(alignment: .topLeading) { StatusChip().padding(.leading, 16) }
             .overlay(alignment: .topTrailing) { MapControls().padding(.trailing, 16) }
             .sheet(isPresented: .constant(true)) { MainSheet() }
             // Only background pauses: alerts and Control Centre make the scene inactive while the map is still in view.
             .task(id: phase) { model.setActive(phase != .background) }
             .task(id: model.settings.map.radar) { await model.pollRadar() }
+            .task(id: model.settings.map.clouds) { await model.pollClouds() }
+            .task(id: model.settings.map.hazards) { await model.pollHazards() }
+
     }
 }
 

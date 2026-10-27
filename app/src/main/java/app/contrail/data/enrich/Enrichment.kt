@@ -54,10 +54,11 @@ data class AircraftInfo(
 
 data class Photo(val thumbUrl: String, val fullUrl: String, val photographer: String?, val pageUrl: String?, val site: String)
 
-data class Enrichment(val info: AircraftInfo?, val route: Route?, val photos: List<Photo>)
+/** [legs]: each leg of the callsign's route from adsb.lol (SYD-SIN-LHR is two), for when [route] doesn't fit or is missing. */
+data class Enrichment(val info: AircraftInfo?, val route: Route?, val photos: List<Photo>, val legs: List<Route> = emptyList())
 
 /**
- * Keyless lookups: adsbdb.com (aircraft + callsign route) and airport-data.com (photos).
+ * Keyless lookups: adsbdb.com (aircraft + callsign route), adsb.lol (route legs) and airport-data.com (photos).
  * Results are cached in memory per (hex, callsign); callers get the cached value instantly.
  */
 class EnrichmentRepository(private val http: HttpClient) {
@@ -74,8 +75,11 @@ class EnrichmentRepository(private val http: HttpClient) {
             cached(hex, callsign) ?: coroutineScope {
                 val adsbdb = async { safe { adsbdb(hex, callsign) } }
                 val photos = async { safe { airportDataPhotos(hex) }.orEmpty() }
+                val legs = async { callsign?.let { safe { adsbLolLegs(it) } }.orEmpty() }
                 val (info, route, fallbackPhoto) = adsbdb.await() ?: Triple(null, null, null)
-                val e = Enrichment(info, route, photos.await().ifEmpty { listOfNotNull(fallbackPhoto) })
+                val e = Enrichment(info, route, photos.await().ifEmpty { listOfNotNull(fallbackPhoto) }, legs.await().map {
+                    it.copy(flightNumber = route?.flightNumber ?: it.flightNumber, airline = route?.airline ?: it.airline)
+                })
                 synchronized(cache) { cache[key(hex, callsign)] = e }
                 e
             }
@@ -122,6 +126,11 @@ class EnrichmentRepository(private val http: HttpClient) {
         return route
     }
 
+    private suspend fun adsbLolLegs(callsign: String): List<Route> {
+        val res = http.get("https://api.adsb.lol/api/0/route/${callsign.encodeURLPathPart()}")
+        return if (res.status.isSuccess()) parseAdsbLolLegs(res.bodyAsText()) else emptyList()
+    }
+
     private fun AdsbdbRoute.toRoute(): Route? {
         val o = origin?.toAirport() ?: return null
         val d = destination?.toAirport() ?: return null
@@ -139,6 +148,39 @@ class EnrichmentRepository(private val http: HttpClient) {
         }
     }
 }
+
+/** adsb.lol `/api/0/route/{callsign}`: its `_airports` in flight order, as one route per leg. */
+fun parseAdsbLolLegs(json: String): List<Route> {
+    val r = feedJson.decodeFromString<AdsbLolRoute>(json)
+    val static = StaticData.now()
+    val stops = r.airports.map { a ->
+        // The bundled table adds time zone and size; keep the API's coordinates either way.
+        val s = a.icao?.let { static?.airport(it) }
+        Airport(a.icao, a.iata, a.name, a.location ?: s?.city, s?.country, a.lat, a.lon, a.altFeet?.toInt(), s?.tz, s?.size)
+    }
+    val airline = r.airlineCode?.let { static?.airline(it) }
+    val number = r.number?.let { n -> airline?.iata?.let { "$it$n" } }
+    return stops.zipWithNext { o, d -> Route(r.callsign, number, airline, o, d) }
+}
+
+@Serializable
+private data class AdsbLolRoute(
+    val callsign: String,
+    val number: String? = null,
+    @SerialName("airline_code") val airlineCode: String? = null,
+    @SerialName("_airports") val airports: List<AdsbLolAirport> = emptyList(),
+)
+
+@Serializable
+private data class AdsbLolAirport(
+    val name: String,
+    val icao: String? = null,
+    val iata: String? = null,
+    val location: String? = null,
+    val lat: Double,
+    val lon: Double,
+    @SerialName("alt_feet") val altFeet: Double? = null,
+)
 
 @Serializable
 private data class AirportDataResponse(val status: Int = 0, val data: List<AirportDataPhoto> = emptyList())

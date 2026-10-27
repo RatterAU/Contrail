@@ -56,6 +56,24 @@ object SkyGeometry {
         return x to y
     }
 
+    /**
+     * Turns a rotation matrix referenced to magnetic north into one referenced to true north. [declinationDeg] is
+     * east-positive (Adelaide about +8°), as `GeomagneticField.declination` gives it.
+     */
+    fun trueNorth(r: FloatArray, declinationDeg: Double): FloatArray {
+        val c = cos(Math.toRadians(declinationDeg)).toFloat()
+        val s = sin(Math.toRadians(declinationDeg)).toFloat()
+        // World rows: true east = c·east + s·north, true north = −s·east + c·north.
+        return FloatArray(9) { i ->
+            val col = i % 3
+            when (i / 3) {
+                0 -> c * r[col] + s * r[3 + col]
+                1 -> -s * r[col] + c * r[3 + col]
+                else -> r[i]
+            }
+        }
+    }
+
     /** Heading and pitch of the back camera from the rotation matrix. */
     fun cameraPointing(r: FloatArray): Pair<Double, Double> {
         val east = -r[2].toDouble()

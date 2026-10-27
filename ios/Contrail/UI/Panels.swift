@@ -50,8 +50,18 @@ private struct LayersPanel: View {
                     Text("Light").tag(MapAppearance.light)
                 }
             }
-            Section {
+            Section("Weather") {
                 Toggle(isOn: $s.map.radar) { Label { row("Rain radar", "Animated, last hour") } icon: { Image(systemName: "cloud.rain") } }
+                Toggle(isOn: $s.map.clouds) { Label { row("Clouds", "Satellite, day and night, every 10 min") } icon: { Image(systemName: "cloud") } }
+                Toggle(isOn: $s.map.hazards) { Label { row("Hazards", "Turbulence, icing, storms, ash and cyclones") } icon: { Image(systemName: "exclamationmark.triangle") } }
+                Picker(selection: $s.map.wind) {
+                    Text("Off").tag(WindLevel?.none)
+                    ForEach(WindLevel.allCases, id: \.self) { Text($0.label).tag(WindLevel?.some($0)) }
+                } label: {
+                    Label { row("Wind", "Animated, from Open-Meteo") } icon: { Image(systemName: "wind") }
+                }
+            }
+            Section {
                 Toggle(isOn: $s.map.airports) { Label { row("Airports", "Smaller airfields appear as you zoom in") } icon: { Image(systemName: "building.2") } }
                 Toggle(isOn: $s.map.labels) { Label { row("Callsign labels", nil) } icon: { Image(systemName: "textformat") } }
                 Toggle(isOn: $s.map.allTrails) { Label { row("Trails for every aircraft", "Uses more battery") } icon: { Image(systemName: "scribble") } }
@@ -266,6 +276,11 @@ private struct AboutPanel: View {
                 credit("Photos", "airport-data.com and its photographers")
                 credit("Weather", "aviationweather.gov")
                 credit("Rain radar", "RainViewer")
+                credit("Wind", "Open-Meteo (CC BY 4.0)")
+                credit("Satellite clouds", "NASA GIBS: Himawari and GOES")
+                credit("Hazard areas", "aviationweather.gov SIGMETs")
+                credit("Route legs", "adsb.lol")
+                credit("Past flights", "adsb.lol daily open data (ODbL)")
                 credit("Airports and airlines", "OurAirports, OpenFlights")
                 credit("Airline logos", "Jxck-S and sexym0nk3y on GitHub")
             } header: {

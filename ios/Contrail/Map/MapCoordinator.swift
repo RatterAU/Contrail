@@ -20,6 +20,11 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
     private var radar: [RadarOverlay] = []
     private var radarRenderers: [ObjectIdentifier: MKTileOverlayRenderer] = [:]
     private var radarFrame = 0
+    private var clouds: [CloudOverlay] = []
+    private var cloudBucket: Int64?
+    private var hazardPolygons: [HazardPolygon] = []
+    private var hazardLabels: [HazardLabel] = []
+    private var shownSigmets: [Sigmet] = []
 
     private var tickTask: Task<Void, Never>?
     private var radarTask: Task<Void, Never>?
@@ -367,7 +372,10 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
             return o
         }
         // All frames load once; the animation only flips which one is visible, so it never refetches tiles.
-        for o in radar { mapView.insertOverlay(o, at: 0, level: .aboveRoads) }
+        // Radar draws over the clouds.
+        for o in radar {
+            if let top = clouds.last { mapView.insertOverlay(o, above: top) } else { mapView.insertOverlay(o, at: 0, level: .aboveRoads) }
+        }
         radarFrame = radar.count - 1
         guard radar.count > 1 else { return }
         radarTask = Task { [weak self] in
@@ -381,6 +389,39 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
                 self.showRadarFrame()
             }
         }
+    }
+
+    // MARK: Clouds and hazards
+
+    /// Satellite clouds (see `CloudOverlay`) for this 10-minute `bucket`, under the radar; nil removes them.
+    func setClouds(_ bucket: Int64?) {
+        guard bucket != cloudBucket else { return }
+        cloudBucket = bucket
+        mapView.removeOverlays(clouds)
+        clouds = bucket.map(CloudOverlay.all) ?? []
+        for o in clouds.reversed() { mapView.insertOverlay(o, at: 0, level: .aboveRoads) }
+    }
+
+    func setHazards(_ list: [Sigmet]) {
+        guard list != shownSigmets else { return }
+        shownSigmets = list
+        mapView.removeOverlays(hazardPolygons)
+        mapView.removeAnnotations(hazardLabels)
+        hazardPolygons = []
+        hazardLabels = []
+        let now = Millis.now
+        for s in list where (s.validTo ?? .max) >= now {
+            for area in s.areas where area.count >= 3 {
+                var pts = area.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
+                let p = HazardPolygon(coordinates: &pts, count: pts.count)
+                p.color = HazardLabel.color(s.hazard)
+                hazardPolygons.append(p)
+                let c = CLLocationCoordinate2D(latitude: area.map(\.lat).reduce(0, +) / Double(area.count), longitude: area.map(\.lon).reduce(0, +) / Double(area.count))
+                hazardLabels.append(HazardLabel(c, s.label, p.color))
+            }
+        }
+        mapView.addOverlays(hazardPolygons, level: .aboveRoads)
+        mapView.addAnnotations(hazardLabels)
     }
 
     private func showRadarFrame() {
@@ -439,6 +480,25 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
             let v = mapView.dequeueReusableAnnotationView(withIdentifier: AirportView.reuseId, for: a) as! AirportView
             v.configure(a, dark: mapView.traitCollection.userInterfaceStyle == .dark)
             return v
+        case let h as HazardLabel:
+            let v = mapView.dequeueReusableAnnotationView(withIdentifier: "hazard") ?? MKAnnotationView(annotation: h, reuseIdentifier: "hazard")
+            v.annotation = h
+            let label = (v.subviews.first as? UILabel) ?? UILabel()
+            if label.superview == nil { v.addSubview(label) }
+            label.numberOfLines = 2
+            label.textAlignment = .center
+            label.font = .systemFont(ofSize: 11, weight: .bold)
+            label.textColor = h.color
+            label.text = h.text
+            label.shadowColor = mapView.traitCollection.userInterfaceStyle == .dark ? .black : .white
+            label.shadowOffset = CGSize(width: 0, height: 1)
+            label.sizeToFit()
+            v.frame = label.bounds
+            v.isEnabled = false
+            v.isUserInteractionEnabled = false
+            v.zPriority = .min
+            v.displayPriority = .defaultLow
+            return v
         case is ScrubAnnotation:
             let v = MKAnnotationView(annotation: annotation, reuseIdentifier: nil)
             v.frame = CGRect(x: 0, y: 0, width: 14, height: 14)
@@ -462,6 +522,18 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
     }
 
     func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
+        if let c = overlay as? CloudOverlay {
+            let renderer = MKTileOverlayRenderer(tileOverlay: c)
+            renderer.alpha = 0.85
+            return renderer
+        }
+        if let h = overlay as? HazardPolygon {
+            let r = MKPolygonRenderer(polygon: h)
+            r.fillColor = h.color.withAlphaComponent(0.16)
+            r.strokeColor = h.color.withAlphaComponent(0.9)
+            r.lineWidth = 1.5
+            return r
+        }
         if let r = overlay as? RadarOverlay {
             let renderer = MKTileOverlayRenderer(tileOverlay: r)
             renderer.alpha = radar.last === r ? 0.7 : 0
@@ -486,6 +558,7 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
     }
 
     func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+        if !model.mapMoving { model.mapMoving = true }
         // A gesture in progress means the user moved the map; programmatic moves don't count.
         if mapView.subviews.first?.gestureRecognizers?.contains(where: { $0.state == .began || $0.state == .changed }) == true {
             userMovedMap = true
@@ -513,6 +586,11 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
         let tooWide = min(halfWidth, halfHeight) > 300
         if model.viewTooWide != tooWide { model.viewTooWide = tooWide }
         model.viewport = Viewport(center: Coord(lat: r.center.latitude, lon: r.center.longitude), radiusNm: Int(min(max(radius, 5), 250)))
+        model.mapMoving = false
+        model.windArea = r.span.longitudeDelta >= 180
+            ? Area(south: max(r.center.latitude - r.span.latitudeDelta / 2, -80), west: -180, north: min(r.center.latitude + r.span.latitudeDelta / 2, 80), east: 180)
+            : Area(south: r.center.latitude - r.span.latitudeDelta / 2, west: r.center.longitude - r.span.longitudeDelta / 2,
+                   north: r.center.latitude + r.span.latitudeDelta / 2, east: r.center.longitude + r.span.longitudeDelta / 2)
         saveCamera()
         updateAirports()
         render(animate: false)
@@ -560,6 +638,8 @@ struct MapView: UIViewRepresentable {
         let map = model.map
         map.apply(model.settings.map)
         map.setRadar(model.radarFrames)
+        map.setClouds(model.cloudBucket)
+        map.setHazards(model.sigmets)
         _ = model.details?.route
         _ = model.scrub
         _ = model.following

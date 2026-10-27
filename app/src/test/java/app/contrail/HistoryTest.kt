@@ -41,4 +41,13 @@ class HistoryTest {
         // Merging the same history again changes nothing.
         assertEquals(t.trail.size, t.withHistory(FlightHistory.parseOpenSkyTrack(json, 3_500_000)!!).trail.size)
     }
+
+    @Test fun pastFlightsAreThisPlanesOnlyNewestFirst() {
+        // A shard holds every aircraft whose hex starts 7c4e; blank airports were out of coverage.
+        val shard = "7c4ee8\tQFA1\tYSSY\t100\tWSSS\t580\n7c4ee8\tQFA2\tWSSS\t700\t\t1200\n7c4ee9\tVOZ1\tYMML\t50\tYSSY\t140\n"
+        val list = FlightHistory.parsePastFlights(shard, "7c4ee8")
+        assertEquals(listOf("QFA2", "QFA1"), list.map { it.callsign })
+        assertNull(list[0].to)
+        assertEquals(100 * 60_000L, list[1].departed)
+    }
 }

@@ -120,6 +120,7 @@ import app.contrail.ui.theme.glass
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import org.maplibre.android.maps.MapLibreMapOptions
+import org.maplibre.geojson.FeatureCollection
 
 private enum class MapSheet { LAYERS, FILTERS }
 
@@ -143,6 +144,9 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     val mapStyle = prefs.style?.let { n -> MapStyle.entries.find { it.name == n } } ?: if (darkTheme) MapStyle.DARK else MapStyle.LIGHT
     val radarFrames by vm.radarFrames.collectAsStateWithLifecycle()
+    val cloudTiles by vm.cloudTiles.collectAsStateWithLifecycle()
+    val hazards by vm.hazards.collectAsStateWithLifecycle()
+    val wind by vm.wind.collectAsStateWithLifecycle()
     var radarIndex by remember { mutableStateOf(0) }
     /** True while a full-screen page hides the map, so the render and radar loops can idle. */
     val mapCovered = remember { mutableStateOf(false) }
@@ -184,6 +188,7 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 context, map,
                 { v ->
                     vm.onViewport(v)
+                    controller?.let { vm.windArea.value = it.visibleArea() }
                     cameraPrefs.edit().putFloat("lat", v.lat.toFloat()).putFloat("lon", v.lon.toFloat()).putFloat("zoom", v.zoom.toFloat()).apply()
                 },
                 onAircraftTap = { hex -> vm.select(hex) },
@@ -229,6 +234,11 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
     LaunchedEffect(controller, prefs.airports, prefs.labels, mapStyle) {
         controller?.setToggles(prefs.airports, prefs.labels)
     }
+    LaunchedEffect(controller, cloudTiles, mapStyle) { controller?.setClouds(cloudTiles) }
+    LaunchedEffect(controller, hazards, mapStyle) { controller?.setHazards(hazards ?: FeatureCollection.fromFeatures(emptyList())) }
+    // The first camera stop can come before the controller is set; give the wind layer the view straight away.
+    LaunchedEffect(controller) { controller?.let { vm.windArea.value = it.visibleArea() } }
+
     // Radar: load all frames, then loop through them; pause on the newest.
     LaunchedEffect(controller, radarFrames, mapStyle) {
         val c = controller ?: return@LaunchedEffect
@@ -266,7 +276,7 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 val all = vm.tracks.value
                 val selTrack = sel?.let { all[it] }
                 // Only draw the route when it checks out against the live position.
-                val checked = selTrack?.let { FlightProgressCalc.shownRoute(it, vm.enrichment.value?.route, now) }?.takeIf { r ->
+                val checked = selTrack?.let { vm.enrichment.value.let { e -> FlightProgressCalc.shownRoute(it, e?.route, now, e?.legs.orEmpty()) } }?.takeIf { r ->
                     FlightProgressCalc.compute(selTrack, r, now).verified
                 }
                 val origin = checked?.origin
@@ -364,14 +374,17 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
             permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             return@LaunchedEffect
         }
+        // The rotation vector is referenced to magnetic north; plane bearings are true.
+        var declination = 0.0
         launch {
             DeviceSensors.location(context).collect { l ->
                 userLocation = l
+                declination = android.hardware.GeomagneticField(l.latitude.toFloat(), l.longitude.toFloat(), l.altitude.toFloat(), l.time).declination.toDouble()
                 // Rounded so small GPS wobble doesn't restart the area polling.
                 vm.nearbyCentre.value = (Math.round(l.latitude * 20) / 20.0) to (Math.round(l.longitude * 20) / 20.0)
             }
         }
-        DeviceSensors.orientation(context).collect { orientation.value = it }
+        DeviceSensors.orientation(context).collect { orientation.value = Orientation(SkyGeometry.trueNorth(it.matrix, declination), it.needsCalibration) }
     }
     var nearbyItems by remember { mutableStateOf<List<NearbyItem>?>(null) }
     LaunchedEffect(nearbyOpen || skyOpen, userLocation) {
@@ -430,11 +443,21 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
     ) {
         Box(Modifier.fillMaxSize()) {
             AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize().hazeSource(haze))
+            val windLevel = prefs.wind
+            val c = controller
+            if (windLevel != null && c != null) WindLayer(c, wind, windLevel, mapStyle.dark, mapCovered.value || following, Modifier.fillMaxSize())
 
             CompositionLocalProvider(LocalHaze provides haze.takeUnless { lite }) {
                 Column(Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 16.dp, top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val count by vm.trackCount.collectAsStateWithLifecycle()
                     LiveChip(status, count)
+                    prefs.wind?.let { lvl ->
+                        Text(
+                            if (wind == null) "Wind ${lvl.label} · loading" else "Wind ${lvl.label}",
+                            style = MaterialTheme.typography.labelMedium.merge(Numeric),
+                            modifier = Modifier.glass(RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 7.dp),
+                        )
+                    }
                     radarFrames.getOrNull(radarIndex)?.let { (time, _) ->
                         Text(
                             "Radar ${clock(time)}",

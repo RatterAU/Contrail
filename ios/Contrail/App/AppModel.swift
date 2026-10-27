@@ -78,12 +78,8 @@ final class AppModel {
     private(set) var details: Enrichment?
     private(set) var detailsLoading = false
 
-    /// The route to show: the published one when the plane's position fits it, else one read off the flown path,
-    /// else the published one (shown as not matching).
     func route(for t: Track, now: Millis) -> Route? {
-        let listed = details?.route
-        if let listed, FlightProgress.compute(t, listed, now: now).verified { return listed }
-        return StaticData.now().flatMap { FlightProgress.flownRoute(t, listed: listed, data: $0) } ?? listed
+        FlightProgress.shownRoute(t, listed: details?.route, legs: details?.legs ?? [], now: now)
     }
     private(set) var airportState: AirportState?
     var following = false
@@ -93,6 +89,14 @@ final class AppModel {
     var showNearby = false
     var showSky = false
     private(set) var radarFrames: [RadarFrame] = []
+    /// The 10-minute slot of satellite clouds to show; nil when the layer is off.
+    private(set) var cloudBucket: Int64?
+    private(set) var sigmets: [Sigmet] = []
+    private(set) var windGrid: WindGrid?
+    /// The visible map, set when the camera stops; drives which wind points are fetched.
+    var windArea: Area?
+    /// True from the start of a camera move until it settles; the wind particles hide meanwhile.
+    var mapMoving = false
     /// The view is wider than the feeds can serve (250 nm around the centre), so most of it has no traffic.
     var viewTooWide = false
     /// Height of the main sheet, so the map can keep the selected plane in the part of the screen still visible.
@@ -302,6 +306,39 @@ final class AppModel {
         while !Task.isCancelled {
             if let f = try? await weather.radarFrames() { radarFrames = Array(f.suffix(8)) }
             try? await Task.sleep(for: .seconds(300))
+        }
+    }
+
+    /// Satellite clouds, moved on to the newest image every 10 minutes while the layer is on.
+    func pollClouds() async {
+        guard settings.map.clouds else { cloudBucket = nil; return }
+        while !Task.isCancelled {
+            cloudBucket = Millis.now / 600_000
+            do { try await Task.sleep(for: .seconds(600)) } catch { return }
+        }
+    }
+
+    /// SIGMET areas, refreshed every 10 minutes while the layer is on.
+    func pollHazards() async {
+        guard settings.map.hazards else { sigmets = []; return }
+        while !Task.isCancelled {
+            if let s = try? await weather.sigmets() { sigmets = s }
+            do { try await Task.sleep(for: .seconds(600)) } catch { return }
+        }
+    }
+
+    /// Wind for the visible map while the layer is on; called again whenever the view settles somewhere new.
+    /// Points are cached an hour, so panning back and forth costs nothing.
+    func loadWind() async {
+        guard settings.map.wind != nil, let a = windArea else { windGrid = nil; return }
+        // Let a fling settle before asking for anything.
+        do { try await Task.sleep(for: .milliseconds(600)) } catch { return }
+        let lonSpan = a.east < a.west ? a.east + 360 - a.west : a.east - a.west
+        let step = WindGrid.step(latSpan: a.north - a.south, lonSpan: lonSpan)
+        let points = WindGrid.points(south: a.south, west: a.west, north: a.north, east: a.east, step: step)
+        while !Task.isCancelled {
+            windGrid = await weather.wind(points, step: step)
+            do { try await Task.sleep(for: .seconds(3600)) } catch { return }
         }
     }
 
