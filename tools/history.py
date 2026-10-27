@@ -3,7 +3,7 @@
 
 Run daily by .github/workflows/history.yml. The day's dump (about 4 GB) is streamed straight from its release into
 `legs`, never saved, and every aircraft's trace is split into flights. `shards` then publishes the last DAYS days as
-small files on GitHub Pages, one per first three hex digits (site/h/7c4.txt), one flight per line:
+small files on GitHub Pages, one per first four hex digits (site/h/7c4e.txt, a few KB), one flight per line:
 
     hex  callsign  from  departed  to  arrived
 
@@ -146,7 +146,7 @@ def cmd_shards(days_dir, site_dir):
     shards = defaultdict(list)
     for h, rows in by_hex.items():
         for cs, dep, t0, arr, t1 in merge(sorted(rows, key=lambda r: r[2])):
-            shards[h[:3]].append(f"{h}\t{cs}\t{dep}\t{t0}\t{arr}\t{t1}\n")
+            shards[h[:4]].append(f"{h}\t{cs}\t{dep}\t{t0}\t{arr}\t{t1}\n")
     os.makedirs(os.path.join(site_dir, "h"), exist_ok=True)
     for k, lines in shards.items():
         with open(os.path.join(site_dir, "h", k + ".txt"), "w", encoding="utf-8") as fh:
