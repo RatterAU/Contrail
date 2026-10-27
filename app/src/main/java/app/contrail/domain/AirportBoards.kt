@@ -26,7 +26,7 @@ object AirportBoards {
     private const val AT_AIRPORT_NM = 4.0
     private const val CIRCUIT_NM = 15.0
 
-    fun build(airport: Airport, tracks: Collection<Track>, routes: Map<String, Route?>, now: Long): Boards {
+    fun build(airport: Airport, tracks: Collection<Track>, routes: Map<String, Route?>, now: Long, runways: List<Runway> = emptyList()): Boards {
         val arrivals = ArrayList<BoardRow>()
         val departures = ArrayList<BoardRow>()
         for (t in tracks) {
@@ -49,11 +49,11 @@ object AirportBoards {
                     departures += BoardRow(t, route, if ((a.groundSpeed ?: 0.0) > 3) BoardStatus.TAXIING else BoardStatus.ON_GROUND, null, false, dist)
                 fromHere && !a.onGround && p?.verified == true ->
                     departures += BoardRow(t, route, BoardStatus.DEPARTED, p.departedAt, p.departedEstimated, dist)
-                // No usable route: infer from behaviour close to the field.
-                route == null || p?.verified == false -> if (!a.onGround && dist < CIRCUIT_NM && low) {
+                // No usable route: only a plane flying a runway line, not anything low nearby (Parafield's trainers).
+                route == null || p?.verified == false -> if (!a.onGround) {
                     when {
-                        descending -> arrivals += BoardRow(t, null, BoardStatus.APPROACH, null, false, dist)
-                        climbing -> departures += BoardRow(t, null, BoardStatus.JUST_DEPARTED, t.takeoffAt, false, dist)
+                        descending && onRunwayLine(a, airport, runways, arriving = true) -> arrivals += BoardRow(t, null, BoardStatus.APPROACH, null, false, dist)
+                        climbing && onRunwayLine(a, airport, runways, arriving = false) -> departures += BoardRow(t, null, BoardStatus.JUST_DEPARTED, t.takeoffAt, false, dist)
                     }
                 }
             }
@@ -61,6 +61,22 @@ object AirportBoards {
         val arrOrder = compareBy<BoardRow>({ if (it.status == BoardStatus.LANDED) 0 else 1 }, { it.time ?: Long.MAX_VALUE }, { it.distanceNm })
         val depOrder = compareBy<BoardRow>({ if (it.status == BoardStatus.TAXIING || it.status == BoardStatus.ON_GROUND) 0 else 1 }, { -(it.time ?: 0) })
         return Boards(arrivals.sortedWith(arrOrder), departures.sortedWith(depOrder))
+    }
+
+    /**
+     * On final to one of the airport's runways ([arriving]) or climbing out along one: within 1 nm of the line through
+     * the airport's reference point, tracking within 15° of it, and no higher than a normal approach or climb-out.
+     */
+    fun onRunwayLine(a: Aircraft, airport: Airport, runways: List<Runway>, arriving: Boolean): Boolean {
+        val trk = a.track ?: return false
+        val agl = (a.altBaro ?: return false) - (airport.elevationFt ?: 0)
+        val d = Geo.distanceNm(airport.lat, airport.lon, a.lat, a.lon)
+        if (if (arriving) d > 12 || agl > 400 * d + 800 else d > 8 || agl > 600 * d + 1500) return false
+        val brg = if (arriving) Geo.bearing(a.lat, a.lon, airport.lat, airport.lon) else Geo.bearing(airport.lat, airport.lon, a.lat, a.lon)
+        return runways.flatMap { listOfNotNull(it.leHeading, it.heHeading) }.any { h ->
+            val off = Geo.angleDiff(brg, h)
+            Geo.angleDiff(trk, h) < 15 && (d < 1 || (off < 90 && d * kotlin.math.sin(Math.toRadians(off)) <= 1))
+        }
     }
 
     private fun Airport.matches(other: Airport) =

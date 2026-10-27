@@ -79,4 +79,6 @@ struct Enrichment: Hashable, Sendable {
     var photos: [Photo]
     /// Each leg of the callsign's route from adsb.lol (SYD-SIN-LHR is two), for when `route` doesn't fit or is missing.
     var legs: [Route] = []
+    /// adsbdb answered (about 1 s) but adsb.lol's legs haven't (it can take several seconds).
+    var legsPending = false
 }

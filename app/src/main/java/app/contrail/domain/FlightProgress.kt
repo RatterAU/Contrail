@@ -100,9 +100,12 @@ object FlightProgressCalc {
             a.onGround -> fromOrigin < 5 || toDest < 5
             else -> {
                 val crossTrack = abs(Geo.crossTrackNm(o.lat, o.lon, d.lat, d.lon, lat, lon))
-                val onCorridor = crossTrack <= max(60.0, min(250.0, total * 0.15))
+                // Long flights follow airways and winds hundreds of nm off the great circle (Sydney-Abu Dhabi passes
+                // Adelaide, 280 nm off), so the corridor grows with the distance.
+                val onCorridor = crossTrack <= max(60.0, total * 0.15)
                 val betweenEnds = fromOrigin + toDest <= total * 1.3 + 30
-                val headingOk = toDest < 60 || a.track == null ||
+                // Departure and arrival procedures point planes anywhere near the airports.
+                val headingOk = toDest < 60 || fromOrigin < 60 || a.track == null ||
                     Geo.angleDiff(a.track, Geo.bearing(lat, lon, d.lat, d.lon)) <= 75
                 onCorridor && betweenEnds && headingOk
             }

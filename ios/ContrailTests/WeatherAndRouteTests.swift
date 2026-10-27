@@ -29,6 +29,27 @@ struct RouteLegTests {
 }
 
 struct PastFlightTests {
+    @Test func pathFromAdsbLolTrace() throws {
+        let f = try #require(FlightHistory.parsePastFlights("7c6d97\tQFA683\tYMML\t29884000\tYPAD\t29884051\t20261026.0.ab.1500.120 20261027.0.aa.9.8\n", hex: "7c6d97").first)
+        #expect(f.traces == ["20261026.0.ab.1500.120", "20261027.0.aa.9.8"])
+        #expect(FlightHistory.traceURL(f.traces[0])?.absoluteString ==
+                "https://github.com/adsblol/globe_history_2026/releases/download/v2026.10.26-planes-readsb-prod-0/v2026.10.26-planes-readsb-prod-0.tar.ab")
+        #expect(FlightHistory.traceURL("garbage") == nil)
+        // A real gzip file, as it sits in the release: Foundation has no gzip, so the header is stripped by hand.
+        let json = try #require(FlightHistory.gunzip(Data(base64Encoded: "H4sIAAAAAAACE22OzQqDMBCEXyXkHEO2SYzbVxEPolIEf4rVU+m7d900aGlDCOzsfJN5yr6pZ3kVMjR5i0EqIdd+7B5rPd5JhoDWOENnXyx105FYljRlNug8KAHO6cLR9rbM29RSAFyUMHynbRjiWylR5omKECphORcKo31CwBtzILRiiBEgwDPhvEn+LzOw2WtE9uuDQNy1HyQWyCy1oQZgC+1tqg3u3ycxiIkPcDKdrNXrDT1jdHZbAQAA")!))
+        let pts = FlightHistory.parseTrace(json)
+        #expect(pts.count == 6)
+        #expect(pts[0].onGround && pts[0].alt == 0)
+        #expect(pts[1].alt == 3000 && pts[4].alt == nil)
+        #expect(pts[1].time == (29884000 * 60 + 60) * 1000)
+        // The flight's window drops the row from the next flight hours later; the 9999 kt glitch is ignored.
+        let path = FlightHistory.slice(pts, f)
+        #expect(path.count == 5)
+        let st = FlightHistory.stats(path)
+        #expect(st.topAltFt == 35000 && st.topSpeedKt == 450)
+        #expect(st.distanceNm > 300 && st.distanceNm < 600)
+    }
+
     @Test func onlyThisPlaneNewestFirst() {
         // A shard holds every aircraft whose hex starts 7c4e; blank airports were out of coverage.
         let shard = "7c4ee8\tQFA1\tYSSY\t100\tWSSS\t580\n7c4ee8\tQFA2\tWSSS\t700\t\t~1200\n7c4ee9\tVOZ1\tYMML\t50\tYSSY\t140\n"

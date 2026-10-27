@@ -55,7 +55,8 @@ data class AircraftInfo(
 data class Photo(val thumbUrl: String, val fullUrl: String, val photographer: String?, val pageUrl: String?, val site: String)
 
 /** [legs]: each leg of the callsign's route from adsb.lol (SYD-SIN-LHR is two), for when [route] doesn't fit or is missing. */
-data class Enrichment(val info: AircraftInfo?, val route: Route?, val photos: List<Photo>, val legs: List<Route> = emptyList())
+/** [legsPending]: adsbdb answered (about 1 s) but adsb.lol's legs haven't (it can take several seconds). */
+data class Enrichment(val info: AircraftInfo?, val route: Route?, val photos: List<Photo>, val legs: List<Route> = emptyList(), val legsPending: Boolean = false)
 
 /**
  * Keyless lookups: adsbdb.com (aircraft + callsign route), adsb.lol (route legs) and airport-data.com (photos).
@@ -69,15 +70,20 @@ class EnrichmentRepository(private val http: HttpClient) {
 
     fun cached(hex: String, callsign: String?): Enrichment? = synchronized(cache) { cache[key(hex, callsign)] }
 
-    suspend fun lookup(hex: String, callsign: String?): Enrichment {
+    /** [partial] gets adsbdb's answer as soon as it's in, before adsb.lol's slower legs. */
+    suspend fun lookup(hex: String, callsign: String?, partial: suspend (Enrichment) -> Unit = {}): Enrichment {
         cached(hex, callsign)?.let { return it }
         return mutex.withLock {
             cached(hex, callsign) ?: coroutineScope {
                 val adsbdb = async { safe { adsbdb(hex, callsign) } }
                 val photos = async { safe { airportDataPhotos(hex) }.orEmpty() }
                 val legs = async { callsign?.let { safe { adsbLolLegs(it) } }.orEmpty() }
-                val (info, route, fallbackPhoto) = adsbdb.await() ?: Triple(null, null, null)
-                val e = Enrichment(info, route, photos.await().ifEmpty { listOfNotNull(fallbackPhoto) }, legs.await().map {
+                val (info, listed, fallbackPhoto) = adsbdb.await() ?: Triple(null, null, null)
+                // adsbdb rejects the whole request when it doesn't know the airframe (VOZ092's 7cad46), route included.
+                val route = listed ?: callsign?.let { routeFor(it) }
+                val pics = photos.await().ifEmpty { listOfNotNull(fallbackPhoto) }
+                if (callsign != null && !legs.isCompleted) partial(Enrichment(info, route, pics, legsPending = true))
+                val e = Enrichment(info, route, pics, legs.await().map {
                     it.copy(flightNumber = route?.flightNumber ?: it.flightNumber, airline = route?.airline ?: it.airline)
                 })
                 synchronized(cache) { cache[key(hex, callsign)] = e }

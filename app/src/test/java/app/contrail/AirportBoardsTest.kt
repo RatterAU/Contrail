@@ -29,14 +29,16 @@ class AirportBoardsTest {
             t("a1", "QFA680", inbound.first, inbound.second, 20000, Geo.bearing(inbound.first, inbound.second, adl.lat, adl.lon)),
             t("a2", "QFA736", outbound.first, outbound.second, 25000, Geo.bearing(outbound.first, outbound.second, syd.lat, syd.lon)),
             t("a3", "VOZ221", adl.lat, adl.lon + 0.01, 0, 90.0, ground = true, gs = 12.0),
-            t("a4", "UNKNOWN1", adl.lat + 0.1, adl.lon, 2500, 180.0, vr = -700.0),
+            // No route: on final to runway 23 counts; a trainer descending over Parafield, 9 nm off, doesn't.
+            Geo.destination(adl.lat, adl.lon, 50.0, 6.0).let { t("a4", "UNKNOWN1", it.first, it.second, 2000, 230.0, vr = -700.0) },
+            t("a5", "UNKNOWN2", -34.793, 138.633, 1500, 180.0, vr = -500.0),
         )
         val routes = mapOf(
             "QFA680" to Route("QFA680", "QF680", null, mel, adl),
             "QFA736" to Route("QFA736", "QF736", null, adl, syd),
             "VOZ221" to Route("VOZ221", "VA221", null, adl, mel),
         )
-        val b = AirportBoards.build(adl, tracks, routes, 0)
+        val b = AirportBoards.build(adl, tracks, routes, 0, listOf(Runway("YPAD", "05", "23", 10171, "ASP", 50.0, 230.0, null, null, null, null)))
         assertEquals(listOf("a4", "a1"), b.arrivals.map { it.track.hex }.sorted().reversed())
         assertEquals(BoardStatus.EN_ROUTE, b.arrivals.first { it.track.hex == "a1" }.status)
         assertEquals(BoardStatus.APPROACH, b.arrivals.first { it.track.hex == "a4" }.status)

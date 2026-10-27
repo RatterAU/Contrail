@@ -53,4 +53,32 @@ class HistoryTest {
         assertTrue(list[1].arrivedSeen)
         assertEquals(100 * 60_000L, list[1].departed)
     }
+
+    @Test fun pastFlightPathFromAdsbLolTrace() {
+        val f = FlightHistory.parsePastFlights("7c6d97\tQFA683\tYMML\t29884000\tYPAD\t29884051\t20261026.0.ab.1500.120 20261027.0.aa.9.8\n", "7c6d97").single()
+        assertEquals(listOf("20261026.0.ab.1500.120", "20261027.0.aa.9.8"), f.traces)
+        assertEquals(
+            "https://github.com/adsblol/globe_history_2026/releases/download/v2026.10.26-planes-readsb-prod-0/v2026.10.26-planes-readsb-prod-0.tar.ab",
+            FlightHistory.traceUrl(f.traces[0]),
+        )
+        assertNull(FlightHistory.traceUrl("garbage"))
+        // Rows are seconds after `timestamp`; "ground" and null altitudes both parse.
+        val base = 29884000L * 60
+        val pts = FlightHistory.parseTrace(
+            """{"icao":"7c6d97","timestamp":$base,"trace":[[0,-37.67,144.84,"ground",12,0,0,null,null],[60,-37.6,144.9,3000,180.5,0,0,1500,null],
+            [1800,-36,141,35000,450,0,0,0,null],[1810,-35.99,141.1,35000,9999,0,0,0,null],[3000,-34.95,138.53,null,140,0,0,0,null],[9999,-34.9,138.5,0,0,0,0,0,null]]}""",
+        )
+        assertEquals(6, pts.size)
+        assertTrue(pts[0].onGround && pts[0].alt == 0)
+        assertEquals(3000, pts[1].alt)
+        assertNull(pts[4].alt)
+        assertEquals((base + 60) * 1000, pts[1].time)
+        // The flight's window drops the row from the next flight hours later.
+        val path = FlightHistory.slice(pts, f)
+        assertEquals(5, path.size)
+        val st = FlightHistory.stats(path)
+        assertEquals(35000, st.topAltFt)
+        assertTrue(st.distanceNm > 300 && st.distanceNm < 600)
+        assertEquals(450.0, st.topSpeedKt!!, 0.0) // the 9999 kt glitch is ignored
+    }
 }

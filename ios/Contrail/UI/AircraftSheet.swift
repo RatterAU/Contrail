@@ -20,12 +20,15 @@ struct AircraftSheet: View {
                         let route = model.route(for: track, now: now)
                         let p = route.map { FlightProgress.compute(track, $0, now: now) }
                         VStack(alignment: .leading, spacing: 14) {
-                            RouteCard(track: track, route: route, progress: p, loading: model.details == nil && track.aircraft.callsign != nil, now: now)
+                            // Until adsb.lol's legs arrive, an adsbdb route that doesn't check out isn't called wrong yet.
+                            let waiting = model.details?.legsPending == true && p?.verified != true
+                            RouteCard(track: track, route: waiting ? nil : route, progress: waiting ? nil : p,
+                                      loading: (model.details == nil || waiting) && track.aircraft.callsign != nil, now: now)
                             Instruments(a: track.aircraft)
                             Insights(items: FlightInsights.insights(track, route, p, near: near, now: now, fmt: Fmt.current))
                         }
                     }
-                    if track.trail.count >= 3 { ProfileChart(track: track) }
+                    if track.trail.count >= 3 { ProfileChart(trail: track.trail) }
                     if let photos = model.details?.photos, !photos.isEmpty { PhotoPager(photos: photos) }
                     AboutAircraft(a: track.aircraft, info: model.details?.info)
                     PastFlights(hex: hex)
@@ -276,7 +279,7 @@ private struct Insights: View {
 /// Altitude (filled) and ground speed (line) over the recorded trail. Dragging marks the point on the map.
 private struct ProfileChart: View {
     @Environment(AppModel.self) private var model
-    let track: Track
+    let trail: [TrailPoint]
     @State private var selected: Date?
 
     var body: some View {
@@ -322,7 +325,7 @@ private struct ProfileChart: View {
         .onChange(of: selected) { _, d in
             model.scrub = d.flatMap { d in
                 let ms = Millis(d.timeIntervalSince1970 * 1000)
-                return track.trail.min { abs($0.time - ms) < abs($1.time - ms) }
+                return trail.min { abs($0.time - ms) < abs($1.time - ms) }
             }
             if d != nil { UISelectionFeedbackGenerator().selectionChanged() }
         }
@@ -336,7 +339,7 @@ private struct ProfileChart: View {
     /// At most ~200 points (Charts on an iPhone 11 stays smooth, and the shape doesn't change), with ground speed
     /// averaged over neighbours: speeds derived from fix-to-fix distances are noisy.
     private var sampled: [TrailPoint] {
-        let t = track.trail
+        let t = trail
         let pts = t.count <= 200 ? t : (0..<200).map { t[Int(Double($0) * Double(t.count) / 200)] } + [t.last!]
         return pts.indices.map { i in
             var p = pts[i]
@@ -436,17 +439,32 @@ private struct AboutAircraft: View {
 private struct PastFlights: View {
     @Environment(AppModel.self) private var model
     let hex: String
-    @State private var flights: [PastFlight] = []
+    /// nil while loading; a failed download says so rather than hiding the card.
+    @State private var flights: [PastFlight]?
+    @State private var failed = false
     @State private var all = false
 
     var body: some View {
-        Group {
-            if !flights.isEmpty {
+        // A VStack, not a Group: an empty Group drops .task, so the flights would never load.
+        VStack(alignment: .leading, spacing: 14) {
+            if let flights {
                 SectionTitle("Past flights")
                 Card {
+                    if failed {
+                        Text("Couldn't load past flights. Check your connection.").foregroundStyle(.secondary)
+                    } else if flights.isEmpty {
+                        Text("No flights seen in the last 14 days.").foregroundStyle(.secondary)
+                    }
                     ForEach(Array((all ? flights : Array(flights.prefix(5))).enumerated()), id: \.offset) { i, f in
                         if i > 0 { Divider() }
-                        row(f)
+                        Button { model.openPast(f) } label: {
+                            HStack(spacing: 8) {
+                                row(f)
+                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                            }
+                            .contentShape(.rect)
+                        }
+                        .buttonStyle(.plain)
                     }
                     if flights.count > 5 && !all {
                         Divider()
@@ -456,7 +474,12 @@ private struct PastFlights: View {
                 Text("Last 14 days, up to yesterday · adsb.lol").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
             }
         }
-        .task(id: hex) { flights = await model.history.past(hex) ?? [] }
+        .task(id: hex) {
+            flights = nil
+            let result = await model.history.past(hex)
+            failed = result == nil
+            flights = result ?? []
+        }
     }
 
     private func row(_ f: PastFlight) -> some View {
@@ -476,7 +499,13 @@ private struct PastFlights: View {
             Spacer()
             let dep = Fmt.current.time(f.departed, zone: fromZone), arr = Fmt.current.time(f.arrived, zone: toZone)
             if let times = f.departedSeen && f.arrivedSeen ? "\(dep)–\(arr)" : f.departedSeen ? "Dep \(dep)" : f.arrivedSeen ? "Arr \(arr)" : nil {
-                Text(times).monospacedDigit().foregroundStyle(.secondary)
+                // Each clock is in its own airport's zone, so the duration says how long it really took.
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(times).monospacedDigit().foregroundStyle(.secondary)
+                    if f.departedSeen && f.arrivedSeen {
+                        Text(Fmt.duration(f.arrived - f.departed)).font(.footnote).monospacedDigit().foregroundStyle(.secondary)
+                    }
+                }
             }
         }
     }
@@ -530,6 +559,87 @@ private struct TechnicalDetails: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             ForEach(rows, id: \.0) { r in ValueRow(label: r.0, value: r.1) }
+        }
+    }
+}
+
+// MARK: Past flight
+
+/// One earlier flight, opened from Past flights. The map draws its path in place of the live trail; this shows the
+/// two ends in their own local times, what the path says (distance, height, speed) and its profile.
+struct PastFlightSheet: View {
+    @Environment(AppModel.self) private var model
+    let view: AppModel.PastView
+
+    var body: some View {
+        let f = view.flight
+        let data = StaticData.now()
+        let from = f.from.flatMap { data?.airport($0) }, to = f.to.flatMap { data?.airport($0) }
+        let fromZone = from?.tz.flatMap(TimeZone.init(identifier:)) ?? .current
+        let toZone = to?.tz.flatMap(TimeZone.init(identifier:)) ?? .current
+        var dayStyle = Date.FormatStyle.dateTime.weekday(.abbreviated).day().month(.abbreviated)
+        let _ = dayStyle.timeZone = fromZone
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(f.callsign ?? "Past flight").font(.largeTitle.weight(.bold)).lineLimit(1).minimumScaleFactor(0.6)
+                        Text("\(Date(timeIntervalSince1970: Double(f.departed) / 1000).formatted(dayStyle)) · Past flight")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Button { model.closePast() } label: { Label("Back", systemImage: "chevron.left").font(.subheadline.weight(.semibold)) }
+                        .buttonStyle(.glass)
+                }
+                Card {
+                    HStack(alignment: .top) {
+                        end(f.from, from, f.departedSeen ? "Took off \(Fmt.current.time(f.departed, zone: fromZone))" : "Takeoff not seen", .leading)
+                        Spacer()
+                        Image(systemName: "airplane").foregroundStyle(.secondary).padding(.top, 10)
+                        Spacer()
+                        end(f.to, to, f.arrivedSeen ? "Landed \(Fmt.current.time(f.arrived, zone: toZone))" : "Landing not seen", .trailing)
+                    }
+                    // Each clock is in its own airport's zone, so the duration says how long it really took.
+                    if f.departedSeen && f.arrivedSeen {
+                        Text("\(Fmt.duration(f.arrived - f.departed)) in the air").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                if let path = view.path, !view.failed, path.count >= 2 {
+                    let st = FlightHistory.stats(path)
+                    Card {
+                        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 14) {
+                            GridRow {
+                                Fact(label: "Distance flown", value: Fmt.current.nm(st.distanceNm))
+                                Fact(label: "Highest", value: Fmt.current.feet(st.topAltFt))
+                            }
+                            GridRow { Fact(label: "Top speed", value: Fmt.current.knots(st.topSpeedKt)) }
+                        }
+                    }
+                    if path.count >= 3 { ProfileChart(trail: path) }
+                } else {
+                    Card {
+                        HStack(spacing: 10) {
+                            if view.path == nil { ProgressView() }
+                            Text(view.path == nil ? "Loading the flown path…"
+                                 : view.failed ? "Couldn't load the flown path. Check your connection."
+                                 : "The path for this flight wasn't recorded.").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Text("Path from adsb.lol's open data, as its receivers heard it: gaps are where none did.")
+                    .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 20)
+            .padding(.bottom, 30)
+        }
+    }
+
+    private func end(_ code: String?, _ ap: Airport?, _ time: String, _ align: HorizontalAlignment) -> some View {
+        VStack(alignment: align, spacing: 2) {
+            Text(ap?.iata ?? code ?? "—").font(.title.weight(.bold)).foregroundStyle(code == nil ? .secondary : .primary)
+            Text(ap?.shortName ?? (code == nil ? "Unknown" : code!)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            Text(time).font(.footnote).foregroundStyle(.secondary).monospacedDigit()
         }
     }
 }

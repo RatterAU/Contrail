@@ -167,8 +167,19 @@ def legs(trace, day_start, grid):
     return [tuple(f[:5]) for f in found if f[1] or f[3] or f[7] <= 300 or f[8] >= 86100]
 
 
-def cmd_legs(day_start, out_path):
+def part_ref(tag, parts, offset, size):
+    """Where a trace's bytes sit in the release's split tar, so the apps can fetch just that plane's day with an HTTP
+    range request: "YYYYMMDD.N.aa.offset.size". Empty if it straddles two parts. `parts`: [(suffix, bytes)] in order."""
+    for suffix, n in parts:
+        if offset < n:
+            return f"{tag[1:11].replace('.', '')}.{tag.rsplit('-', 1)[1]}.{suffix}.{offset}.{size}" if offset + size <= n else ""
+        offset -= n
+    return ""
+
+
+def cmd_legs(day_start, out_path, tag="", parts=""):
     grid = load_airports()
+    parts = [(name.rsplit(".", 1)[1], int(n)) for name, n in (p.rsplit(":", 1) for p in parts.split(",") if p)]
     n = 0
     with tarfile.open(fileobj=sys.stdin.buffer, mode="r|") as tar, gzip.open(out_path, "wt", encoding="utf-8") as out:
         for m in tar:
@@ -176,8 +187,9 @@ def cmd_legs(day_start, out_path):
             if not (m.isfile() and "/traces/" in m.name) or "_~" in m.name:
                 continue
             j = json.loads(gzip.decompress(tar.extractfile(m).read()))
+            ref = part_ref(tag, parts, m.offset_data, m.size) if parts else ""
             for cs, dep, t0, arr, t1 in legs(j["trace"], day_start, grid):
-                out.write(f"{j['icao']}\t{cs}\t{dep}\t{t0}\t{arr}\t{t1}\n")
+                out.write(f"{j['icao']}\t{cs}\t{dep}\t{t0}\t{arr}\t{t1}\t{ref}\n")
                 n += 1
     print(f"{n} flights", file=sys.stderr)
 
@@ -188,7 +200,8 @@ def merge(rows):
     for r in rows:
         p = out[-1] if out else None
         if p and not p[3] and not r[1] and 0 <= minutes(r[2]) - minutes(p[4]) <= 30 and (not p[0] or not r[0] or p[0] == r[0]):
-            out[-1] = (p[0] or r[0], p[1], p[2], r[3], r[4])
+            # Both days' trace refs (sixth field, when present) so the app can fetch the whole path.
+            out[-1] = (p[0] or r[0], p[1], p[2], r[3], r[4]) + ((" ".join(x for x in (p[5], r[5]) if x),) if len(p) > 5 else ())
         else:
             out.append(r)
     return [r for r in out if r[1] or r[3]]
@@ -211,13 +224,13 @@ def cmd_shards(days_dir, site_dir):
     for f in files:
         with gzip.open(os.path.join(days_dir, f), "rt", encoding="utf-8") as fh:
             for line in fh:
-                h, cs, dep, t0, arr, t1 = line.rstrip("\n").split("\t")
-                by_hex[h].append((cs, dep, t0, arr, t1))
+                h, cs, dep, t0, arr, t1, *ref = line.rstrip("\n").split("\t")
+                by_hex[h].append((cs, dep, t0, arr, t1, ref[0] if ref else ""))
     days = {(datetime.date.fromisoformat(f[:10]) - datetime.date(1970, 1, 1)).days for f in files}
     shards = defaultdict(list)
     for h, rows in by_hex.items():
-        for cs, dep, t0, arr, t1 in incomplete_dropped(merge(sorted(rows, key=lambda r: minutes(r[2]))), days):
-            shards[h[:4]].append(f"{h}\t{cs}\t{dep}\t{t0}\t{arr}\t{t1}\n")
+        for cs, dep, t0, arr, t1, ref in incomplete_dropped(merge(sorted(rows, key=lambda r: minutes(r[2]))), days):
+            shards[h[:4]].append(f"{h}\t{cs}\t{dep}\t{t0}\t{arr}\t{t1}\t{ref}\n")
     os.makedirs(os.path.join(site_dir, "h"), exist_ok=True)
     for k, lines in shards.items():
         with open(os.path.join(site_dir, "h", k + ".txt"), "w", encoding="utf-8") as fh:
@@ -227,7 +240,7 @@ def cmd_shards(days_dir, site_dir):
 
 if __name__ == "__main__":
     if sys.argv[1] == "legs":
-        cmd_legs(float(sys.argv[2]), sys.argv[3])
+        cmd_legs(float(sys.argv[2]), sys.argv[3], *sys.argv[4:6])
     elif sys.argv[1] == "shards":
         cmd_shards(sys.argv[2], sys.argv[3])
     elif sys.argv[1] == "test":
@@ -275,4 +288,9 @@ if __name__ == "__main__":
         assert len(incomplete_dropped([("A", "YSSY", "100", "", "~2879")], {1, 2})) == 1
         # A flight split at midnight UTC joins up.
         assert merge([("QFA1", "YSSY", "100", "", "~1439"), ("QFA1", "", "~1440", "EGLL", "2000")]) == [("QFA1", "YSSY", "100", "EGLL", "2000")]
+        assert merge([("Q", "YSSY", "100", "", "~1439", "a"), ("Q", "", "~1440", "EGLL", "2000", "b")])[0][5] == "a b"
+        # Trace refs: the part holding the bytes, or none when they straddle two parts.
+        parts = [("aa", 1000), ("ab", 1000)]
+        assert part_ref("v2026.10.26-planes-readsb-prod-0", parts, 1500, 100) == "20261026.0.ab.500.100"
+        assert part_ref("v2026.10.26-planes-readsb-prod-0", parts, 950, 100) == ""
         print("ok")

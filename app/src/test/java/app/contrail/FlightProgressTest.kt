@@ -73,6 +73,18 @@ class FlightProgressTest {
         assertNull(p.eta)
     }
 
+    @Test fun longHaulWellOffTheGreatCircleIsVerified() {
+        // EY445 Sydney to Abu Dhabi crosses Adelaide, 280 nm off the great circle: still its route.
+        val auh = Airport("OMAA", "AUH", "Abu Dhabi", "Abu Dhabi", "AE", 24.433, 54.651, 88)
+        val ey = Route("ETD445", "EY445", null, syd, auh)
+        assertTrue(FlightProgressCalc.compute(trackAt(adl.lat, adl.lon, trk = 290.0), ey, 0).verified)
+        // Heading back east over Adelaide isn't that flight.
+        assertFalse(FlightProgressCalc.compute(trackAt(adl.lat, adl.lon, trk = 100.0), ey, 0).verified)
+        // Just after takeoff, a departure procedure pointing south still counts.
+        val (lat, lon) = Geo.destination(syd.lat, syd.lon, 180.0, 15.0)
+        assertTrue(FlightProgressCalc.compute(trackAt(lat, lon, trk = 160.0), ey, 0).verified)
+    }
+
     @Test fun headingAwayFromDestinationIsUnverified() {
         val (lat, lon) = Geo.destination(adl.lat, adl.lon, 85.0, 300.0)
         val p = FlightProgressCalc.compute(trackAt(lat, lon, trk = 265.0), route, 0)

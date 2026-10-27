@@ -25,7 +25,21 @@ enum AirportBoards {
     private static let atAirportNm = 4.0
     private static let circuitNm = 15.0
 
-    static func build(_ airport: Airport, _ tracks: some Collection<Track>, routes: [String: Route?], now: Millis) -> Boards {
+    /// On final to one of the airport's runways (`arriving`) or climbing out along one: within 1 nm of the line through
+    /// the airport's reference point, tracking within 15° of it, and no higher than a normal approach or climb-out.
+    static func onRunwayLine(_ a: Aircraft, _ airport: Airport, _ runways: [Runway], arriving: Bool) -> Bool {
+        guard let trk = a.track, let alt = a.altBaro else { return false }
+        let agl = Double(alt - (airport.elevationFt ?? 0))
+        let d = Geo.distanceNm(airport.lat, airport.lon, a.lat, a.lon)
+        if arriving ? (d > 12 || agl > 400 * d + 800) : (d > 8 || agl > 600 * d + 1500) { return false }
+        let brg = arriving ? Geo.bearing(a.lat, a.lon, airport.lat, airport.lon) : Geo.bearing(airport.lat, airport.lon, a.lat, a.lon)
+        return runways.flatMap { [$0.leHeading, $0.heHeading].compactMap { $0 } }.contains { h in
+            let off = Geo.angleDiff(brg, h)
+            return Geo.angleDiff(trk, h) < 15 && (d < 1 || (off < 90 && d * sin(off * .pi / 180) <= 1))
+        }
+    }
+
+    static func build(_ airport: Airport, _ tracks: some Collection<Track>, routes: [String: Route?], now: Millis, runways: [Runway] = []) -> Boards {
         var arrivals: [BoardRow] = [], departures: [BoardRow] = []
         for t in tracks {
             let a = t.aircraft
@@ -45,10 +59,14 @@ enum AirportBoards {
                 departures.append(BoardRow(track: t, route: route, status: (a.groundSpeed ?? 0) > 3 ? .taxiing : .onGround, time: nil, timeEstimated: false, distanceNm: dist))
             } else if fromHere && !a.onGround && p?.verified == true {
                 departures.append(BoardRow(track: t, route: route, status: .departed, time: p?.departedAt, timeEstimated: p?.departedEstimated ?? false, distanceNm: dist))
-            } else if route == nil || p?.verified == false, !a.onGround && dist < circuitNm && low {
-                // No usable route: infer from behaviour close to the field.
-                if vr < -300 { arrivals.append(BoardRow(track: t, route: nil, status: .approach, time: nil, timeEstimated: false, distanceNm: dist)) }
-                if vr > 300 { departures.append(BoardRow(track: t, route: nil, status: .justDeparted, time: t.takeoffAt, timeEstimated: false, distanceNm: dist)) }
+            } else if route == nil || p?.verified == false, !a.onGround {
+                // No usable route: only a plane flying a runway line, not anything low nearby (Parafield's trainers).
+                if vr < -300 && onRunwayLine(a, airport, runways, arriving: true) {
+                    arrivals.append(BoardRow(track: t, route: nil, status: .approach, time: nil, timeEstimated: false, distanceNm: dist))
+                }
+                if vr > 300 && onRunwayLine(a, airport, runways, arriving: false) {
+                    departures.append(BoardRow(track: t, route: nil, status: .justDeparted, time: t.takeoffAt, timeEstimated: false, distanceNm: dist))
+                }
             }
         }
         arrivals.sort { l, r in

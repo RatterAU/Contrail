@@ -24,6 +24,14 @@ class MapRenderTest {
     private fun hexes(area: Area?, selected: String? = null) =
         MapController.aircraftFeatures(tracks, selected, Filters(), now, area).features()!!.map { it.getStringProperty("hex") }.toSet()
 
+    @Test fun linesCrossTheAntimeridianTheShortWay() {
+        val pts = listOf(178.0, -179.0, 179.5, -178.0).map { org.maplibre.geojson.Point.fromLngLat(it, 0.0) }
+        assertEquals(listOf(178.0, 181.0, 179.5, 182.0), MapController.unwrapped(pts).map { it.longitude() })
+        // Sydney to Los Angeles: every step stays short, none jumps ~360 degrees.
+        val gc = MapController.unwrapped(MapController.greatCircle(-33.9, 151.2, 33.9, -118.4))
+        assertTrue(gc.zipWithNext().all { (a, b) -> kotlin.math.abs(b.longitude() - a.longitude()) < 5 })
+    }
+
     @Test fun frameRateFollowsZoom() {
         // Zoomed in on a city, planes visibly move: fast frames. Zoomed out to a continent: slow frames.
         assertEquals(100L, MapController.frameIntervalMs(14.0, -35.0))

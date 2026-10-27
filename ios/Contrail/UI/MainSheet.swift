@@ -30,7 +30,8 @@ struct MainSheet: View {
 
     @ViewBuilder private var content: some View {
         switch model.selection {
-        case .aircraft(let hex): AircraftSheet(hex: hex).id(hex)
+        case .aircraft(let hex):
+            if let past = model.pastView { PastFlightSheet(view: past).id(past.flight.departed) } else { AircraftSheet(hex: hex).id(hex) }
         case .airport(let a): AirportSheet(airport: a).id(a.id)
         case nil:
             if model.showNearby {

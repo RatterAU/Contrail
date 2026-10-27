@@ -75,6 +75,38 @@ final class AppModel {
 
     private(set) var selection: Selection?
     /// Route, photos and registry info for the selected plane.
+    /// A past flight opened from the sheet; `path` is nil while downloading and empty if it wasn't recorded.
+    struct PastView: Equatable {
+        var flight: PastFlight
+        var path: [TrailPoint]?
+        var failed = false
+    }
+    /// Drawn on the map in place of the live trail and route, framed once when its path arrives.
+    private(set) var pastView: PastView?
+    @ObservationIgnored private var pastTask: Task<Void, Never>?
+
+    func openPast(_ f: PastFlight) {
+        pastTask?.cancel()
+        following = false
+        scrub = nil
+        pastView = PastView(flight: f)
+        map.selectionChanged()
+        pastTask = Task {
+            let path = await history.path(f)
+            guard !Task.isCancelled, pastView?.flight == f else { return }
+            pastView = PastView(flight: f, path: path ?? [], failed: path == nil)
+            map.pastLoaded()
+        }
+    }
+
+    func closePast() {
+        guard pastView != nil else { return }
+        pastTask?.cancel()
+        pastView = nil
+        scrub = nil
+        map.selectionChanged()
+    }
+
     private(set) var details: Enrichment?
     private(set) var detailsLoading = false
 
@@ -141,6 +173,8 @@ final class AppModel {
     func select(_ s: Selection?) {
         guard s != selection else { return }
         selection = s
+        pastTask?.cancel()
+        pastView = nil
         scrub = nil
         details = nil
         following = false
@@ -217,10 +251,16 @@ final class AppModel {
             return
         }
         detailsLoading = true
-        let e = await enrichment.lookup(hex, callsign)
+        let e = await enrichment.lookup(hex, callsign) { [weak self] p in await self?.showPartial(hex, p) }
         guard selectedHex == hex else { return }
         details = e
         detailsLoading = false
+        map.selectionChanged()
+    }
+
+    private func showPartial(_ hex: String, _ e: Enrichment) {
+        guard selectedHex == hex, details == nil else { return }
+        details = e
         map.selectionChanged()
     }
 

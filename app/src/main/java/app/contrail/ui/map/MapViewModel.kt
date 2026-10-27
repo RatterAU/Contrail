@@ -7,6 +7,7 @@ import app.contrail.data.SearchResults
 import app.contrail.data.enrich.Airport
 import app.contrail.data.enrich.Enrichment
 import app.contrail.data.feed.FeedsUnavailableException
+import app.contrail.data.feed.PastFlight
 import app.contrail.data.static.Runway
 import app.contrail.data.static.StaticData
 import app.contrail.data.weather.Metar
@@ -147,7 +148,7 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
     val scrub = MutableStateFlow<TrailPoint?>(null)
 
     /** Emits whenever the map needs redrawing before its next paced frame: new data, a selection, settings or a camera stop. */
-    val redraw: Flow<Any?> get() = merge(tracks.drop(1), _selected.drop(1), prefs.drop(1), scrub.drop(1), enrichment.drop(1), viewport.drop(1))
+    val redraw: Flow<Any?> get() = merge(tracks.drop(1), _selected.drop(1), prefs.drop(1), scrub.drop(1), enrichment.drop(1), viewport.drop(1), past.drop(1))
 
     /** Route, photos and registry info for the selected plane; re-fetched if its callsign changes. */
     val enrichment: StateFlow<Enrichment?> = combine(_selected, tracks) { hex, all -> hex?.let { it to all[it]?.aircraft?.callsign } }
@@ -156,7 +157,7 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
             if (key == null) { emit(null); return@transformLatest }
             val (hex, cs) = key
             emit(c.enrichment.cached(hex, cs))
-            emit(c.enrichment.lookup(hex, cs))
+            emit(c.enrichment.lookup(hex, cs) { emit(it) })
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -189,7 +190,32 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
         viewport.value = v
     }
 
+    /** A past flight opened from the sheet; [path] is null while downloading and empty if it wasn't recorded. */
+    data class PastView(val hex: String, val flight: PastFlight, val path: List<TrailPoint>?, val failed: Boolean = false)
+
+    /** Shown on the map in place of the live trail, framed once when its path arrives. */
+    val past = MutableStateFlow<PastView?>(null)
+    private var pastJob: kotlinx.coroutines.Job? = null
+
+    fun openPast(hex: String, f: PastFlight) {
+        pastJob?.cancel()
+        _following.value = false
+        scrub.value = null
+        past.value = PastView(hex, f, null)
+        pastJob = viewModelScope.launch {
+            val path = c.history.path(f)
+            past.update { v -> if (v?.flight == f) v.copy(path = path.orEmpty(), failed = path == null) else v }
+        }
+    }
+
+    fun closePast() {
+        pastJob?.cancel()
+        past.value = null
+        scrub.value = null
+    }
+
     fun select(hex: String?) {
+        closePast()
         // An open airport sheet gives way to the plane (it used to stay up until closed by hand).
         if (hex != null) selectAirport(null)
         _selected.value = hex
@@ -275,7 +301,7 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
             val routes = near.map { t ->
                 async { limit.withPermit { t.aircraft.callsign!! to c.enrichment.routeFor(t.aircraft.callsign) } }
             }.awaitAll().toMap()
-            val boards = AirportBoards.build(ap, near, routes, now)
+            val boards = AirportBoards.build(ap, near, routes, now, _airportUi.value?.runways.orEmpty())
             _airportUi.update { ui ->
                 ui?.copy(
                     boards = boards,

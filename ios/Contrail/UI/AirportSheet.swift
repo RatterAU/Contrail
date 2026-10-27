@@ -41,7 +41,7 @@ struct AirportSheet: View {
     }
 
     @ViewBuilder private func boards(_ state: AirportState?) -> some View {
-        let b = state.map { AirportBoards.build(airport, model.tracks.values, routes: $0.routes, now: .now) }
+        let b = state.map { AirportBoards.build(airport, model.tracks.values, routes: $0.routes, now: .now, runways: $0.runways) }
         Picker("Board", selection: $board) {
             Text("Arrivals").tag(0)
             Text("Departures").tag(1)

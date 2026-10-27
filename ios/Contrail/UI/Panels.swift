@@ -259,12 +259,12 @@ private struct AboutPanel: View {
                 ForEach(["adsb.lol", "adsb.fi"], id: \.self) { name in
                     let h = model.health[name]
                     LabeledContent {
-                        Text(h.map { $0.ok ? "\($0.latencyMs ?? 0) ms" : "Unavailable" } ?? "Not used yet").monospacedDigit()
+                        Text(h.map { $0.ok ? "\($0.latencyMs ?? 0) ms" : "Busy, retrying in a minute" } ?? "Not used yet").monospacedDigit()
                     } label: {
                         Label {
                             Text(name)
                         } icon: {
-                            Circle().fill(h == nil ? .gray : h!.ok ? .green : .red).frame(width: 9, height: 9)
+                            Circle().fill(h == nil ? .gray : h!.ok ? .green : .orange).frame(width: 9, height: 9)
                         }
                     }
                 }

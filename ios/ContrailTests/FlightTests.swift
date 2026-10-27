@@ -73,6 +73,19 @@ struct FlightProgressTests {
         #expect(p.eta == nil)
     }
 
+    @Test func longHaulWellOffTheGreatCircleIsVerified() {
+        // EY445 Sydney to Abu Dhabi crosses Adelaide, 280 nm off the great circle: still its route.
+        var auh = adl
+        auh.icao = "OMAA"; auh.iata = "AUH"; auh.lat = 24.433; auh.lon = 54.651
+        let ey = route("ETD445", "EY445", syd, auh)
+        #expect(FlightProgress.compute(trackAt(adl.lat, adl.lon, trk: 290), ey, now: 0).verified)
+        // Heading back east over Adelaide isn't that flight.
+        #expect(!FlightProgress.compute(trackAt(adl.lat, adl.lon, trk: 100), ey, now: 0).verified)
+        // Just after takeoff, a departure procedure pointing south still counts.
+        let c = Geo.destination(syd.lat, syd.lon, 180, 15)
+        #expect(FlightProgress.compute(trackAt(c.lat, c.lon, trk: 160), ey, now: 0).verified)
+    }
+
     @Test func headingAwayFromDestinationIsUnverified() {
         let c = Geo.destination(adl.lat, adl.lon, 85, 300)
         #expect(!FlightProgress.compute(trackAt(c.lat, c.lon, trk: 265), r, now: 0).verified)
@@ -173,14 +186,17 @@ struct AirportBoardsTests {
             t("a1", "QFA680", inbound, 20000, Geo.bearing(inbound, adl.coord)),
             t("a2", "QFA736", outbound, 25000, Geo.bearing(outbound, syd.coord)),
             t("a3", "VOZ221", Coord(lat: adl.lat, lon: adl.lon + 0.01), 0, 90, ground: true, gs: 12),
-            t("a4", "UNKNOWN1", Coord(lat: adl.lat + 0.1, lon: adl.lon), 2500, 180, vr: -700),
+            // No route: on final to runway 23 counts; a trainer descending over Parafield, 9 nm off, doesn't.
+            t("a4", "UNKNOWN1", Geo.destination(adl.lat, adl.lon, 50, 6), 2000, 230, vr: -700),
+            t("a5", "UNKNOWN2", Coord(lat: -34.793, lon: 138.633), 1500, 180, vr: -500),
         ]
         let routes: [String: Route?] = [
             "QFA680": route("QFA680", "QF680", mel, adl),
             "QFA736": route("QFA736", "QF736", adl, syd),
             "VOZ221": route("VOZ221", "VA221", adl, mel),
         ]
-        let b = AirportBoards.build(adl, tracks, routes: routes, now: 0)
+        let b = AirportBoards.build(adl, tracks, routes: routes, now: 0,
+                                    runways: [Runway(airportIcao: "YPAD", leIdent: "05", heIdent: "23", lengthFt: 10171, surface: "ASP", leHeading: 50, heHeading: 230)])
         #expect(b.arrivals.map(\.track.hex).sorted().reversed() == ["a4", "a1"])
         #expect(b.arrivals.first { $0.track.hex == "a1" }?.status == .enRoute)
         #expect(b.arrivals.first { $0.track.hex == "a4" }?.status == .approach)

@@ -82,6 +82,7 @@ import app.contrail.domain.FlightProgressCalc
 import app.contrail.ui.airport.AirportSheet
 import app.contrail.ui.search.SearchOverlay
 import app.contrail.ui.aircraft.AircraftSheet
+import app.contrail.ui.aircraft.PastFlightSheet
 import app.contrail.ui.theme.Numeric
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -267,6 +268,7 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
         var trailAt = 0L
         val logoRequested = HashSet<String>()
         var fittedFor: String? = null
+        var pastFitted: Any? = null
         val logos = (context.applicationContext as ContrailApp).container.logos
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
@@ -317,10 +319,27 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                         }
                     }
                 }
-                c.render(ac, trail, route, MapController.scrubFeatures(scrubPoint))
+                val pastView = vm.past.value
+                if (pastView == null) {
+                    pastFitted = null
+                    c.render(ac, trail, route, MapController.scrubFeatures(scrubPoint))
+                } else {
+                    // A past flight replaces the live trail and route; live planes stay on the map.
+                    val path = pastView.path.orEmpty()
+                    val ends = listOf(pastView.flight.from, pastView.flight.to).map { code -> code?.let { static?.airport(it) } }
+                    c.render(ac, MapController.pastTrailFeatures(path), MapController.endFeatures(*ends.toTypedArray()), MapController.scrubFeatures(scrubPoint))
+                    if (path.size >= 2 && pastFitted !== pastView.flight) {
+                        pastFitted = pastView.flight
+                        val dm = context.resources.displayMetrics
+                        val pad = (56 * dm.density).toInt()
+                        val step = maxOf(1, path.size / 200)
+                        c.fit(path.filterIndexed { i, _ -> i % step == 0 }.map { LatLng(it.lat, it.lon) } + LatLng(path.last().lat, path.last().lon),
+                            intArrayOf(pad, (110 * dm.density).toInt(), pad, (dm.heightPixels * 0.5).toInt()))
+                    }
+                }
                 // Once per selection, frame the whole flight (origin, plane, destination) above the sheet.
                 if (sel == null) fittedFor = null
-                if (origin != null && dest != null && selTrack != null && sel != fittedFor && !vm.following.value) {
+                if (origin != null && dest != null && selTrack != null && sel != fittedFor && !vm.following.value && vm.past.value == null) {
                     fittedFor = sel
                     val dm = context.resources.displayMetrics
                     val (lat, lon) = selTrack.displayPosition(now)
@@ -333,7 +352,9 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 if (vm.following.value && sel != null) {
                     all[sel]?.displayPosition(now)?.let { (lat, lon) -> c.moveTo(lat, lon, animate = false) }
                 }
-                withTimeoutOrNull(MapController.frameIntervalMs(cam.zoom, cam.target?.latitude ?: 0.0)) { vm.redraw.first() }
+                // Following moves the camera every frame, so pace it fast whatever the zoom, or the map steps.
+                val frame = if (vm.following.value && sel != null) 100L else MapController.frameIntervalMs(cam.zoom, cam.target?.latitude ?: 0.0)
+                withTimeoutOrNull(frame) { vm.redraw.first() }
             }
         }
     }
@@ -396,7 +417,10 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
     }
     val searchResults by vm.searchResults.collectAsStateWithLifecycle()
     val searching by vm.searching.collectAsStateWithLifecycle()
+    val pastView by vm.past.collectAsStateWithLifecycle()
     BackHandler(enabled = anySelection && !searchOpen) {
+        // Back from a past flight returns to the live plane, not straight to the map.
+        if (pastView != null) return@BackHandler vm.closePast()
         vm.select(null)
         vm.selectAirport(null)
     }
@@ -426,6 +450,8 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 val track = selectedTrack
                 if (ap != null) {
                     AirportSheet(ap, onAircraft = ::flyToAircraft, onClose = { vm.selectAirport(null) })
+                } else if (track != null && pastView != null) {
+                    pastView!!.let { v -> PastFlightSheet(v.flight, v.path, v.failed, onBack = vm::closePast, onScrub = { vm.scrub.value = it }) }
                 } else if (track != null) {
                     AircraftSheet(
                         track = track,
@@ -434,6 +460,7 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                         onFollow = { vm.setFollowing(!following) },
                         onClose = { vm.select(null) },
                         onScrub = { vm.scrub.value = it },
+                        onPast = { vm.openPast(track.hex, it) },
                     )
                 } else {
                     Spacer(Modifier.size(1.dp))

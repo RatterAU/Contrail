@@ -613,16 +613,36 @@ class MapController(
             return if (features.isEmpty()) EMPTY else FeatureCollection.fromFeatures(features)
         }
 
+        /** A past flight's path, coloured by altitude like a selected plane's trail. */
+        fun pastTrailFeatures(pts: List<TrailPoint>): FeatureCollection {
+            val out = ArrayList<Feature>()
+            if (pts.size >= 2) addRuns(out, pts.dropLast(1), pts.last().lat, pts.last().lon, 3.5f)
+            return if (out.isEmpty()) EMPTY else FeatureCollection.fromFeatures(out)
+        }
+
+        /** Labelled points at a past flight's known ends. */
+        fun endFeatures(vararg airports: Airport?): FeatureCollection = FeatureCollection.fromFeatures(airports.filterNotNull().map { ap ->
+            Feature.fromGeometry(Point.fromLngLat(ap.lon, ap.lat)).apply {
+                addStringProperty("kind", KIND_END)
+                addStringProperty("code", ap.iata ?: ap.icao)
+            }
+        })
+
         /** One line per run of same-coloured segments: a cruising plane's trail is a handful of features, not thousands. */
         private fun addTrail(out: MutableList<Feature>, track: Track, now: Long, width: Float) {
-            val pts = track.trail
-            if (pts.isEmpty()) return
+            if (track.trail.isEmpty()) return
             val (curLat, curLon) = track.displayPosition(now)
+            addRuns(out, track.trail, curLat, curLon, width)
+        }
+
+        /** [pts] then a final segment to ([curLat], [curLon]). */
+        private fun addRuns(out: MutableList<Feature>, pts: List<TrailPoint>, curLat: Double, curLon: Double, width: Float) {
+            if (pts.isEmpty()) return
             var run = arrayListOf(Point.fromLngLat(pts[0].lon, pts[0].lat))
             var runBand = Int.MIN_VALUE
             fun flush() {
                 if (run.size < 2) return
-                out += Feature.fromGeometry(LineString.fromLngLats(run)).apply {
+                out += Feature.fromGeometry(LineString.fromLngLats(unwrapped(run))).apply {
                     addStringProperty("color", AltitudeColors.hexForBand(runBand))
                     addNumberProperty("w", width)
                 }
@@ -633,7 +653,7 @@ class MapController(
                 val bLon = if (i + 1 < pts.size) pts[i + 1].lon else curLon
                 val b = Point.fromLngLat(bLon, bLat)
                 // A gap in coverage (~50 nm): don't draw a false straight line across it.
-                if (abs(bLat - a.lat) > 0.8 || abs(bLon - a.lon) * cos(Math.toRadians(a.lat)) > 0.8) {
+                if (abs(bLat - a.lat) > 0.8 || abs((bLon - a.lon + 540) % 360 - 180) * cos(Math.toRadians(a.lat)) > 0.8) {
                     flush(); run = arrayListOf(b); runBand = Int.MIN_VALUE; continue
                 }
                 val band = if (a.onGround) AltitudeColors.GROUND_BAND else a.alt?.let { AltitudeColors.bandFor(it) } ?: AltitudeColors.UNKNOWN_BAND
@@ -649,10 +669,10 @@ class MapController(
             val out = ArrayList<Feature>()
             for (h in list) for (area in h.areas) {
                 if (area.size < 3 || (h.validTimeTo ?: Long.MAX_VALUE) < nowSec) continue
-                val ring = area.map { Point.fromLngLat(it.lon, it.lat) }.let { if (it.first() == it.last()) it else it + it.first() }
+                val ring = unwrapped(area.map { Point.fromLngLat(it.lon, it.lat) }.let { if (it.first() == it.last()) it else it + it.first() })
                 val color = hazardColor(h.hazard)
                 out += Feature.fromGeometry(Polygon.fromLngLats(listOf(ring))).apply { addStringProperty("color", color) }
-                out += Feature.fromGeometry(Point.fromLngLat(area.map { it.lon }.average(), area.map { it.lat }.average())).apply {
+                out += Feature.fromGeometry(Point.fromLngLat(ring.map { it.longitude() }.average(), ring.map { it.latitude() }.average())).apply {
                     addStringProperty("color", color)
                     addStringProperty("label", hazardLabel(h))
                 }
@@ -710,7 +730,7 @@ class MapController(
             val dest = destAirport?.let { it.lat to it.lon }
             val out = ArrayList<Feature>(4)
             fun line(kind: String, pts: List<Point>) {
-                if (pts.size >= 2) out += Feature.fromGeometry(LineString.fromLngLats(pts)).apply { addStringProperty("kind", kind) }
+                if (pts.size >= 2) out += Feature.fromGeometry(LineString.fromLngLats(unwrapped(pts))).apply { addStringProperty("kind", kind) }
             }
             for (ap in listOfNotNull(originAirport, destAirport)) {
                 out += Feature.fromGeometry(Point.fromLngLat(ap.lon, ap.lat)).apply {
@@ -733,6 +753,18 @@ class MapController(
                 }
             }
             return if (out.isEmpty()) EMPTY else FeatureCollection.fromFeatures(out)
+        }
+
+        /** Longitudes made continuous (179 then 181, not -179) so MapLibre draws across the antimeridian the short way. */
+        fun unwrapped(pts: List<Point>): List<Point> {
+            var prev = pts.firstOrNull()?.longitude() ?: return pts
+            return pts.map { p ->
+                var lon = p.longitude()
+                while (lon - prev > 180) lon -= 360
+                while (lon - prev < -180) lon += 360
+                prev = lon
+                if (lon == p.longitude()) p else Point.fromLngLat(lon, p.latitude())
+            }
         }
 
         /** Great circle as ~20 nm segments (max 64), including both ends. */

@@ -10,7 +10,8 @@ actor EnrichmentService {
 
     func cached(_ hex: String, _ callsign: String?) -> Enrichment? { cache[key(hex, callsign)] }
 
-    func lookup(_ hex: String, _ callsign: String?) async -> Enrichment {
+    /// `partial` gets adsbdb's answer as soon as it's in, before adsb.lol's slower legs.
+    func lookup(_ hex: String, _ callsign: String?, partial: (@Sendable (Enrichment) async -> Void)? = nil) async -> Enrichment {
         let k = key(hex, callsign)
         if let e = cache[k] { return e }
         if let t = inFlight[k] { return await t.value }
@@ -18,8 +19,14 @@ actor EnrichmentService {
             async let db = try? EnrichmentService.adsbdb(hex, callsign)
             async let photos = (try? EnrichmentService.airportDataPhotos(hex)) ?? []
             async let lol = EnrichmentService.legs(callsign)
-            let (info, route, fallback) = await db ?? (nil, nil, nil)
+            let (info, listed, fallback) = await db ?? (nil, nil, nil)
+            // adsbdb rejects the whole request when it doesn't know the airframe (VOZ092's 7cad46), route included.
+            var route = listed
+            if route == nil, let callsign { route = (try? await EnrichmentService.callsignRoute(callsign)) ?? nil }
             let p = await photos
+            if callsign != nil {
+                await partial?(Enrichment(info: info, route: route, photos: p.isEmpty ? [fallback].compactMap { $0 } : p, legsPending: true))
+            }
             let legs = await lol.map { leg in
                 var l = leg
                 l.flightNumber = route?.flightNumber ?? leg.flightNumber
@@ -151,6 +158,15 @@ struct PastFlight: Equatable, Sendable {
     var arrived: Millis
     var departedSeen = true
     var arrivedSeen = true
+    /// Where this plane's trace for each day of the flight sits in adsb.lol's daily release ("YYYYMMDD.N.aa.offset.size").
+    var traces: [String] = []
+}
+
+/// Figures from a past flight's path. Top speed ignores impossible reports and the fastest 1%, where glitches show.
+struct PastStats: Equatable, Sendable {
+    var distanceNm: Double
+    var topAltFt: Int?
+    var topSpeedKt: Double?
 }
 
 /// The path a plane flew before the app saw it, from OpenSky's anonymous tracks endpoint (keyless; ~400 requests a
@@ -162,6 +178,80 @@ actor FlightHistory {
     private var cache: [String: ([TrailPoint]?, Millis)] = [:]
     /// By shard, not plane: nearby planes often share one (Australian hexes all start 7c).
     private var pastCache: [String: (String, Millis)] = [:]
+
+    private var pathCache: [String: [TrailPoint]] = [:]
+
+    /// The path `f` flew, fetched straight from adsb.lol's daily open-data release: an HTTP range request for just this
+    /// plane's day (a few KB), not the 4 GB file. Empty if it wasn't recorded, nil if a download failed.
+    func path(_ f: PastFlight) async -> [TrailPoint]? {
+        var all: [TrailPoint] = []
+        for ref in f.traces {
+            if let hit = pathCache[ref] { all += hit; continue }
+            let c = ref.split(separator: ".")
+            guard let url = FlightHistory.traceURL(ref), let offset = Int(c[3]), let size = Int(c[4]) else { return [] }
+            var req = URLRequest(url: url)
+            req.setValue("bytes=\(offset)-\(offset + size - 1)", forHTTPHeaderField: "Range")
+            // A full 4 GB answer (not 206) would be wrong; never read it.
+            guard let (data, res) = try? await HTTP.shared.data(for: req), (res as? HTTPURLResponse)?.statusCode == 206,
+                  let json = FlightHistory.gunzip(data) else { return nil }
+            let pts = FlightHistory.parseTrace(json)
+            if pathCache.count > 20 { pathCache.removeAll() }
+            pathCache[ref] = pts
+            all += pts
+        }
+        return FlightHistory.slice(all, f)
+    }
+
+    /// "YYYYMMDD.N.aa.offset.size" to that part's download URL on adsb.lol's globe_history release.
+    static func traceURL(_ ref: String) -> URL? {
+        let c = ref.split(separator: ".").map(String.init)
+        guard c.count == 5, c[0].count == 8 else { return nil }
+        let d = Array(c[0])
+        let tag = "v\(String(d[0..<4])).\(String(d[4..<6])).\(String(d[6..<8]))-planes-readsb-prod-\(c[1])"
+        return URL(string: "https://github.com/adsblol/globe_history_\(String(d[0..<4]))/releases/download/\(tag)/\(tag).tar.\(c[2])")
+    }
+
+    /// Foundation has raw DEFLATE (`.zlib`) but no gzip: skip the gzip header and trailer around it.
+    static func gunzip(_ data: Data) -> Data? {
+        let b = [UInt8](data)
+        guard b.count > 18, b[0] == 0x1f, b[1] == 0x8b, b[2] == 8 else { return nil }
+        let flags = b[3]
+        var i = 10
+        if flags & 4 != 0, i + 2 <= b.count { i += 2 + Int(b[i]) + Int(b[i + 1]) << 8 }
+        if flags & 8 != 0 { while i < b.count && b[i] != 0 { i += 1 }; i += 1 }
+        if flags & 16 != 0 { while i < b.count && b[i] != 0 { i += 1 }; i += 1 }
+        if flags & 2 != 0 { i += 2 }
+        guard i < b.count - 8 else { return nil }
+        return try? (Data(b[i..<(b.count - 8)]) as NSData).decompressed(using: .zlib) as Data
+    }
+
+    /// A readsb trace_full file: `timestamp` plus rows of [secs after it, lat, lon, alt ft | "ground" | null, gs, ...].
+    static func parseTrace(_ data: Data) -> [TrailPoint] {
+        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let base = (o["timestamp"] as? NSNumber)?.doubleValue, let rows = o["trace"] as? [[Any]] else { return [] }
+        return rows.compactMap { r in
+            guard r.count > 4, let secs = (r[0] as? NSNumber)?.doubleValue, let lat = (r[1] as? NSNumber)?.doubleValue,
+                  let lon = (r[2] as? NSNumber)?.doubleValue else { return nil }
+            let ground = (r[3] as? String) == "ground"
+            return TrailPoint(lat: lat, lon: lon, alt: ground ? 0 : (r[3] as? NSNumber)?.intValue, onGround: ground,
+                              gs: (r[4] as? NSNumber)?.doubleValue, time: Millis((base + secs) * 1000))
+        }
+    }
+
+    /// The part of a day's (or two days') trace that is this flight: from 10 min before it was first seen to 10 min after.
+    static func slice(_ pts: [TrailPoint], _ f: PastFlight) -> [TrailPoint] {
+        pts.filter { $0.time >= f.departed - 600_000 && $0.time <= f.arrived + 600_000 }.sorted { $0.time < $1.time }
+    }
+
+    static func stats(_ pts: [TrailPoint]) -> PastStats {
+        let air = pts.filter { !$0.onGround }
+        // Over 750 kt is a glitch: an airliner riding the strongest jet stream peaks around 700.
+        let speeds = air.compactMap(\.gs).filter { $0 <= 750 }.sorted()
+        return PastStats(
+            distanceNm: zip(pts, pts.dropFirst()).reduce(0) { $0 + Geo.distanceNm($1.0.lat, $1.0.lon, $1.1.lat, $1.1.lon) },
+            topAltFt: air.compactMap(\.alt).max(),
+            topSpeedKt: speeds.isEmpty ? nil : speeds[min(Int(Double(speeds.count) * 0.99), speeds.count - 1)])
+    }
 
     /// Earlier flights, newest first; empty if none are known, nil if the request failed.
     func past(_ hex: String) async -> [PastFlight]? {
@@ -188,7 +278,8 @@ actor FlightHistory {
             let c = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
             guard c.count >= 6, c[0] == hex, let t0 = Millis(c[3].trimmingPrefix("~")), let t1 = Millis(c[5].trimmingPrefix("~")) else { return nil }
             return PastFlight(callsign: c[1].isEmpty ? nil : c[1], from: c[2].isEmpty ? nil : c[2], departed: t0 * 60_000,
-                              to: c[4].isEmpty ? nil : c[4], arrived: t1 * 60_000, departedSeen: !c[3].hasPrefix("~"), arrivedSeen: !c[5].hasPrefix("~"))
+                              to: c[4].isEmpty ? nil : c[4], arrived: t1 * 60_000, departedSeen: !c[3].hasPrefix("~"), arrivedSeen: !c[5].hasPrefix("~"),
+                              traces: c.count > 6 ? c[6].split(separator: " ").map(String.init) : [])
         }
         .sorted { $0.departed > $1.departed }
     }

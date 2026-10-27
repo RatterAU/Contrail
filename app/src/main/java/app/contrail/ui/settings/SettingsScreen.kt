@@ -71,7 +71,8 @@ fun AboutScreen(container: AppContainer, onClose: () -> Unit) {
 private fun describe(h: SourceHealth?): String = when {
     h == null -> "Not used yet"
     h.ok -> "Working · ${h.latencyMs ?: "?"} ms"
-    else -> "Failing · ${h.lastError ?: "unknown error"}"
+    // The other feed carries the map meanwhile, so this isn't an outage.
+    else -> "Busy, retrying in a minute · ${h.lastError ?: "no answer"}"
 }
 
 private val CREDITS = listOf(

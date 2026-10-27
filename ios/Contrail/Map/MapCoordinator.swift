@@ -100,9 +100,22 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
     func selectionChanged() {
         trailKey = nil
         routeKey = nil
-        if let hex = model.selectedHex, let t = model.tracks[hex] { reveal(Track.extrapolate(t.aircraft, .now)) }
+        if model.pastView == nil, let hex = model.selectedHex, let t = model.tracks[hex] { reveal(Track.extrapolate(t.aircraft, .now)) }
         if case .airport(let a) = model.selection { reveal(a.coord) }
         Task { self.render(animate: false) }
+    }
+
+    /// A past flight's path arrived: draw it and frame it above the sheet.
+    func pastLoaded() {
+        trailKey = nil
+        routeKey = nil
+        Task { self.render(animate: false) }
+        guard let path = model.pastView?.path, path.count >= 2 else { return }
+        let rect = path.reduce(MKMapRect.null) { r, p in
+            r.union(MKMapRect(origin: MKMapPoint(CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon)), size: MKMapSize(width: 0, height: 0)))
+        }
+        let pad = UIEdgeInsets(top: mapView.safeAreaInsets.top + 70, left: 40, bottom: min(model.sheetHeight, mapView.bounds.height * 0.6) + 30, right: 60)
+        mapView.setVisibleMapRect(rect, edgePadding: pad, animated: true)
     }
 
     func setVisible(_ v: Bool) {
@@ -118,13 +131,19 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
         centre(on: c, animated: true)
     }
 
-    private func centre(on c: Coord, animated: Bool) {
+    /// `glide`: move linearly over this many ms, in step with the planes, instead of MapKit's quick ease (a jolt each tick).
+    private func centre(on c: Coord, animated: Bool, glide: Millis? = nil) {
         // Centre in the visible strip: shift the target up by half the sheet.
         let size = mapView.bounds.size
         let target = mapView.convert(CLLocationCoordinate2D(latitude: c.lat, longitude: c.lon), toPointTo: mapView)
         let shifted = CGPoint(x: target.x, y: target.y + (min(model.sheetHeight, size.height * 0.6) - mapView.safeAreaInsets.top) / 2)
         let centre = mapView.convert(shifted, toCoordinateFrom: mapView)
-        mapView.setCenter(centre, animated: animated)
+        guard let glide else { return mapView.setCenter(centre, animated: animated) }
+        let cam = mapView.camera.copy() as! MKMapCamera
+        cam.centerCoordinate = centre
+        UIView.animate(withDuration: Double(glide) / 1000, delay: 0, options: [.curveLinear, .allowUserInteraction, .beginFromCurrentState]) {
+            self.mapView.camera = cam
+        }
     }
 
     func recentreOnUser() {
@@ -215,8 +234,8 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
             style(view, t, selected: hex == selected, now: now, heading: heading, showLogos: showLogos)
         }
 
-        if model.following, let hex = selected, let t = tracks[hex] {
-            centre(on: Track.extrapolate(t.aircraft, now + step), animated: true)
+        if model.following, model.pastView == nil, let hex = selected, let t = tracks[hex] {
+            centre(on: Track.extrapolate(t.aircraft, now + step), animated: true, glide: animate ? step : nil)
         }
         renderTrails(tracks, selected: selected, now: now, step: step)
         renderRoute(selected.flatMap { tracks[$0] }, now: now)
@@ -247,6 +266,9 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
         var hasher = Hasher()
         hasher.combine(selected)
         hasher.combine(prefs.allTrails)
+        let past = model.pastView?.path
+        hasher.combine(past?.count)
+        hasher.combine(past?.first?.time)
         if prefs.allTrails { for t in tracks.values where planes[t.hex] != nil { hasher.combine(t.hex); hasher.combine(t.trail.count) } }
         if let s = selected.flatMap({ tracks[$0] }) { hasher.combine(s.trail.count); hasher.combine(s.trail.first?.time) }
         let key = hasher.finalize()
@@ -259,8 +281,16 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
                     byStyle[.trail(band: run.band, selected: sel), default: []].append(MKPolyline(coordinates: &pts, count: pts.count))
                 }
             }
-            if prefs.allTrails { for t in tracks.values where planes[t.hex] != nil && t.hex != selected { add(t, selected: false) } }
-            if let s = selected.flatMap({ tracks[$0] }) { add(s, selected: true) }
+            if let past {
+                // A past flight replaces the live trails; live planes stay on the map.
+                for run in MapFeatures.trailRuns(past, current: nil) {
+                    var pts = run.points.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon) }
+                    byStyle[.trail(band: run.band, selected: true), default: []].append(MKPolyline(coordinates: &pts, count: pts.count))
+                }
+            } else {
+                if prefs.allTrails { for t in tracks.values where planes[t.hex] != nil && t.hex != selected { add(t, selected: false) } }
+                if let s = selected.flatMap({ tracks[$0] }) { add(s, selected: true) }
+            }
             let lines = byStyle.map { style, polys in
                 let m = StyledLines(polys)
                 m.style = style
@@ -277,7 +307,7 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
         // The short piece from the last fix to the plane, moved every tick so the trail stays attached.
         if let tailLine { mapView.removeOverlay(tailLine) }
         tailLine = nil
-        if let s = selected.flatMap({ tracks[$0] }), let last = s.trail.last {
+        if model.pastView == nil, let s = selected.flatMap({ tracks[$0] }), let last = s.trail.last {
             let end = Track.extrapolate(s.aircraft, now + step)
             var pts = [CLLocationCoordinate2D(latitude: last.lat, longitude: last.lon), CLLocationCoordinate2D(latitude: end.lat, longitude: end.lon)]
             let m = StyledLines([MKPolyline(coordinates: &pts, count: 2)])
@@ -288,6 +318,17 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
     }
 
     private func renderRoute(_ t: Track?, now: Millis) {
+        if let past = model.pastView {
+            // Just the past flight's known ends.
+            guard routeKey != past.flight.departed.hashValue else { return }
+            routeKey = past.flight.departed.hashValue
+            mapView.removeOverlays(routeLines)
+            mapView.removeAnnotations(endpoints)
+            routeLines = []
+            endpoints = [past.flight.from, past.flight.to].compactMap { $0.flatMap { StaticData.now()?.airport($0) } }.map { AirportAnnotation($0, endpoint: true) }
+            mapView.addAnnotations(endpoints)
+            return
+        }
         let route = t.flatMap { model.route(for: $0, now: now) }
         let p = t.flatMap { tr in route.map { FlightProgress.compute(tr, $0, now: now) } }
         // An unverified route isn't drawn: it would put the plane on a line it isn't flying.
@@ -416,7 +457,11 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
                 let p = HazardPolygon(coordinates: &pts, count: pts.count)
                 p.color = HazardLabel.color(s.hazard)
                 hazardPolygons.append(p)
-                let c = CLLocationCoordinate2D(latitude: area.map(\.lat).reduce(0, +) / Double(area.count), longitude: area.map(\.lon).reduce(0, +) / Double(area.count))
+                // Longitudes made continuous first, so an area across the antimeridian isn't labelled on the far side of the world.
+                var prev = area[0].lon
+                let lons = area.map { p in var lon = p.lon; while lon - prev > 180 { lon -= 360 }; while lon - prev < -180 { lon += 360 }; prev = lon; return lon }
+                let mid = lons.reduce(0, +) / Double(area.count)
+                let c = CLLocationCoordinate2D(latitude: area.map(\.lat).reduce(0, +) / Double(area.count), longitude: mid > 180 ? mid - 360 : mid < -180 ? mid + 360 : mid)
                 hazardLabels.append(HazardLabel(c, s.label, p.color))
             }
         }

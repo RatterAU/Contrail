@@ -61,9 +61,11 @@ jobs:
             if [ -z "$tag" ]; then echo "No dump yet for $day"; continue; fi
             echo "Processing $day ($tag)"
             # Streamed: the ~4 GB tar never touches the disk. A failed day is skipped and retried tomorrow.
-            for part in $(gh release view "$tag" -R "$repo" --json assets -q '.assets[].name' | sort); do
+            # name:bytes per part, so each trace's byte range can be recorded for the apps to fetch on tap.
+            parts=$(gh release view "$tag" -R "$repo" --json assets -q '.assets[] | "\(.name):\(.size)"' | sort)
+            for part in $(echo "$parts" | cut -d: -f1); do
               curl -fsSL "https://github.com/$repo/releases/download/$tag/$part"
-            done | python3 tools/history.py legs "$(date -u -d "$day" +%s)" "site/d/$day.tsv.gz" \
+            done | python3 tools/history.py legs "$(date -u -d "$day" +%s)" "site/d/$day.tsv.gz" "$tag" "$(echo "$parts" | paste -sd, -)" \
               || { rm -f "site/d/$day.tsv.gz"; echo "::warning::$day failed, will retry next run"; }
           done
           ls site/d | sort | head -n -14 | sed 's|^|site/d/|' | xargs -r rm

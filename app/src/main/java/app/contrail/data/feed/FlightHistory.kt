@@ -4,7 +4,10 @@ import app.contrail.domain.Geo
 import app.contrail.domain.TrailPoint
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
@@ -30,7 +33,12 @@ data class PastFlight(
     val arrived: Long,
     val departedSeen: Boolean = true,
     val arrivedSeen: Boolean = true,
+    /** Where this plane's trace for each day of the flight sits in adsb.lol's daily release ("YYYYMMDD.N.aa.offset.size"). */
+    val traces: List<String> = emptyList(),
 )
+
+/** Figures from a past flight's path. Top speed ignores impossible reports and the fastest 1%, where glitches show. */
+data class PastStats(val distanceNm: Double, val topAltFt: Int?, val topSpeedKt: Double?)
 
 /**
  * The path a plane flew before the app saw it, from OpenSky's anonymous tracks endpoint (keyless;
@@ -67,6 +75,35 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
         return parsePastFlights(text, h)
     }
 
+    private val pathCache = object : LinkedHashMap<String, List<TrailPoint>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<TrailPoint>>) = size > 20
+    }
+
+    /**
+     * The path [f] flew, fetched straight from adsb.lol's daily open-data release: an HTTP range request for just this
+     * plane's day (a few KB), not the 4 GB file. Empty if it wasn't recorded, null if a download failed.
+     */
+    suspend fun path(f: PastFlight): List<TrailPoint>? {
+        val days = f.traces.map { ref ->
+            synchronized(pathCache) { pathCache[ref] } ?: run {
+                val url = traceUrl(ref) ?: return emptyList()
+                val (offset, size) = ref.split('.').let { it[3].toLong() to it[4].toLong() }
+                val pts = try {
+                    val res = http.get(url) { header(HttpHeaders.Range, "bytes=$offset-${offset + size - 1}") }
+                    if (res.status.value != 206) return null // a full 4 GB answer would be wrong; never read it
+                    parseTrace(java.util.zip.GZIPInputStream(res.bodyAsBytes().inputStream()).readBytes().decodeToString())
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    return null
+                }
+                synchronized(pathCache) { pathCache[ref] = pts }
+                pts
+            }
+        }
+        return slice(days.flatten(), f)
+    }
+
     /** The current flight's path, oldest first, or null if unknown, stale or the request failed. */
     suspend fun fetch(hex: String): List<TrailPoint>? {
         val now = clock()
@@ -88,7 +125,50 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
         private const val PAST_CACHE_MS = 60 * 60_000L // the files change once a day
         private const val PAST_URL = "https://ratterau.github.io/Contrail/h/"
 
-        /** Lines are `hex  callsign  from  departed  to  arrived`, tab-separated, times in unix minutes, "~" if not seen. */
+        /** "YYYYMMDD.N.aa.offset.size" to that part's download URL on adsb.lol's globe_history release. */
+        fun traceUrl(ref: String): String? {
+            val c = ref.split('.')
+            if (c.size != 5 || c[0].length != 8) return null
+            val tag = "v${c[0].take(4)}.${c[0].substring(4, 6)}.${c[0].substring(6)}-planes-readsb-prod-${c[1]}"
+            return "https://github.com/adsblol/globe_history_${c[0].take(4)}/releases/download/$tag/$tag.tar.${c[2]}"
+        }
+
+        /** A readsb trace_full file: `timestamp` plus rows of [secs after it, lat, lon, alt ft | "ground" | null, gs, ...]. */
+        fun parseTrace(json: String): List<TrailPoint> {
+            val o = feedJson.parseToJsonElement(json).jsonObject
+            val base = o["timestamp"]?.jsonPrimitive?.doubleOrNull ?: return emptyList()
+            return o["trace"]?.jsonArray.orEmpty().mapNotNull { row ->
+                val r = row as? JsonArray ?: return@mapNotNull null
+                val secs = r[0].jsonPrimitive.doubleOrNull ?: return@mapNotNull null
+                val alt = r[3] as? kotlinx.serialization.json.JsonPrimitive
+                val ground = alt?.isString == true && alt.content == "ground"
+                TrailPoint(
+                    lat = r[1].jsonPrimitive.doubleOrNull ?: return@mapNotNull null,
+                    lon = r[2].jsonPrimitive.doubleOrNull ?: return@mapNotNull null,
+                    alt = if (ground) 0 else alt?.takeIf { !it.isString }?.doubleOrNull?.toInt(),
+                    onGround = ground,
+                    gs = (r.getOrNull(4) as? kotlinx.serialization.json.JsonPrimitive)?.doubleOrNull,
+                    time = ((base + secs) * 1000).toLong(),
+                )
+            }
+        }
+
+        /** The part of a day's (or two days') trace that is this flight: from 10 min before it was first seen to 10 min after. */
+        fun slice(pts: List<TrailPoint>, f: PastFlight): List<TrailPoint> =
+            pts.filter { it.time in f.departed - 600_000..f.arrived + 600_000 }.sortedBy { it.time }
+
+        fun stats(pts: List<TrailPoint>): PastStats {
+            val air = pts.filter { !it.onGround }
+            // Over 750 kt is a glitch: an airliner riding the strongest jet stream peaks around 700.
+            val speeds = air.mapNotNull { it.gs }.filter { it <= 750 }.sorted()
+            return PastStats(
+                distanceNm = pts.zipWithNext().sumOf { (a, b) -> Geo.distanceNm(a.lat, a.lon, b.lat, b.lon) },
+                topAltFt = air.mapNotNull { it.alt }.maxOrNull(),
+                topSpeedKt = speeds.getOrNull((speeds.size * 0.99).toInt().coerceAtMost(speeds.size - 1)),
+            )
+        }
+
+        /** Lines are `hex  callsign  from  departed  to  arrived  traces`, tab-separated, times in unix minutes, "~" if not seen. */
         fun parsePastFlights(text: String, hex: String): List<PastFlight> = text.lineSequence()
             .filter { it.startsWith(hex) }
             .mapNotNull { line ->
@@ -96,7 +176,7 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
                 if (c.size < 6 || c[0] != hex) return@mapNotNull null
                 PastFlight(c[1].ifEmpty { null }, c[2].ifEmpty { null }, (c[3].removePrefix("~").toLongOrNull() ?: return@mapNotNull null) * 60_000,
                     c[4].ifEmpty { null }, (c[5].removePrefix("~").toLongOrNull() ?: return@mapNotNull null) * 60_000,
-                    !c[3].startsWith('~'), !c[5].startsWith('~'))
+                    !c[3].startsWith('~'), !c[5].startsWith('~'), c.getOrNull(6)?.split(' ')?.filter { it.isNotEmpty() }.orEmpty())
             }
             .sortedByDescending { it.departed }
             .toList()

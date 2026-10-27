@@ -82,9 +82,12 @@ struct FlightProgress: Hashable, Sendable {
             verified = fromOrigin < 5 || toDest < 5
         } else {
             let crossTrack = abs(Geo.crossTrackNm(o.lat, o.lon, d.lat, d.lon, p.lat, p.lon))
-            let onCorridor = crossTrack <= max(60, min(250, total * 0.15))
+            // Long flights follow airways and winds hundreds of nm off the great circle (Sydney-Abu Dhabi passes
+            // Adelaide, 280 nm off), so the corridor grows with the distance.
+            let onCorridor = crossTrack <= max(60, total * 0.15)
             let betweenEnds = fromOrigin + toDest <= total * 1.3 + 30
-            let headingOk = toDest < 60 || a.track.map { Geo.angleDiff($0, Geo.bearing(p.lat, p.lon, d.lat, d.lon)) <= 75 } ?? true
+            // Departure and arrival procedures point planes anywhere near the airports.
+            let headingOk = toDest < 60 || fromOrigin < 60 || a.track.map { Geo.angleDiff($0, Geo.bearing(p.lat, p.lon, d.lat, d.lon)) <= 75 } ?? true
             verified = onCorridor && betweenEnds && headingOk
         }
 
