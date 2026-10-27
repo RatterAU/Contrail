@@ -10,6 +10,18 @@ You see a plane. You tap it. You know **where it came from, where it's going, an
 
 <br>
 
+<img src="docs/promo/contrail-promo.gif" width="100%" alt="Contrail in 24 seconds: every plane overhead, live on a clean map. Tap any aircraft to see where it is and where it's going, with altitude, speed, route and the flight's real photo. Arrivals, departures and weather for any airport near you. No ads, no paywall, no account. It just works.">
+
+<sub>The whole app in 24 seconds · [watch in full quality](docs/promo/contrail-promo.mp4)</sub>
+
+<br><br>
+
+### [Get it for Android](../../releases/latest) &nbsp;·&nbsp; [Build it for iPhone](#on-an-iphone)
+
+<sub>Free, about 20 MB, installs in two minutes. No store, no sign-up.</sub>
+
+<br>
+
 ![Android 10+](https://img.shields.io/badge/Android-10%2B-0B1B33?style=flat-square&logo=android&logoColor=white)
 ![iOS 26+](https://img.shields.io/badge/iOS-26%2B-0B1B33?style=flat-square&logo=apple&logoColor=white)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?style=flat-square&logo=kotlin&logoColor=white)
@@ -19,7 +31,7 @@ You see a plane. You tap it. You know **where it came from, where it's going, an
 ![No accounts](https://img.shields.io/badge/accounts-none-1F7A4D?style=flat-square)
 ![No tracking](https://img.shields.io/badge/analytics-none-1F7A4D?style=flat-square)
 
-[**Install it**](#install-it) · [**What it does**](#what-it-does) · [**Under the hood**](#under-the-hood) · [**Privacy**](#privacy)
+[**Why**](#why) · [**What it does**](#what-it-does) · [**Install it**](#install-it) · [**Under the hood**](#under-the-hood) · [**Privacy**](#privacy)
 
 </div>
 
@@ -164,7 +176,7 @@ git clone https://github.com/RatterAU/Contrail.git
 cd Contrail
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"   # macOS
 
-./gradlew testDebugUnitTest   # 63 JVM tests
+./gradlew testDebugUnitTest   # 66 JVM tests
 ./gradlew installDebug        # build and install on a connected phone or emulator
 ./gradlew assembleRelease     # arm64 release APK (unsigned without your own keystore.properties)
 ```
@@ -270,7 +282,7 @@ ui/
   nearby/    Planes near me
   ar/        Sky view
   theme/     Colours, type, and the shared grouped-list controls
-app/src/test/  63 JVM tests
+app/src/test/  66 JVM tests
 ```
 
 </details>

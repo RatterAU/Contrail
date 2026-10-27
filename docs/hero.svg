@@ -45,7 +45,7 @@
       <text x="72" y="128" font-size="66" font-weight="800" letter-spacing="-2" fill="#FFFFFF">Contrail</text>
       <rect x="75" y="150" width="132" height="3" rx="1.5" fill="url(#rule)"/>
       <text x="74" y="194" font-size="25" font-weight="500" fill="#AEB6C4">Where&#8217;s it from, where&#8217;s it going, what is it?</text>
-      <text x="75" y="234" font-size="14" font-weight="600" letter-spacing="2.4" fill="#0A84FF">ANDROID &#183; NO ADS &#183; NO PAYWALLS &#183; NO NONSENSE</text>
+      <text x="75" y="234" font-size="14" font-weight="600" letter-spacing="2.4" fill="#0A84FF">ANDROID &#183; IPHONE &#183; NO ADS &#183; NO PAYWALLS &#183; NO NONSENSE</text>
     </g>
 
     <!-- the flight card, drawn the way the app draws it -->
