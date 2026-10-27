@@ -16,6 +16,7 @@ data is ever committed to git.
     curl … | python3 tools/history.py legs 1792972800 out.tsv.gz      # day start (unix s), from the tar on stdin
     python3 tools/history.py shards days/ site/
 """
+import datetime
 import gzip
 import json
 import math
@@ -117,14 +118,30 @@ def nm(a, b):
     return math.hypot(a[1] - b[1], (a[2] - b[2]) * math.cos(math.radians(a[1]))) * 60
 
 
+def only_airport(grid, p):
+    """The airport a plane first seen climbing low can only have left from: every airport (any size) within climbing
+    range, 4 nm plus 1 nm per 300 ft above it, below 5000 ft; given only if there's exactly one."""
+    if not isinstance(p[3], int) or (p[7] or 0) <= 0:
+        return ""
+    found = set()
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            for ident, alat, alon, elev, size in grid.get((math.floor(p[1]) + dy, math.floor(p[2]) + dx), ()):
+                agl = p[3] - elev
+                if 0 <= agl <= 5000 and nm(p, (0, alat, alon)) <= 4 + agl / 300:
+                    found.add(ident)
+    return found.pop() if len(found) == 1 else ""
+
+
 def legs(trace, day_start, grid):
     """Flights in one aircraft's day: (callsign, from, departed, to, arrived), times as `end` gives them.
 
-    A departure that wasn't seen is taken from the previous flight's seen landing only when there was no time for an
-    unseen flight in between: any stop elsewhere costs at least the straight line at 550 kt plus 15 min on the ground,
-    so a gap shorter than that means it left from where it landed. The time stays unknown."""
-    out = []
-    landed = None  # (airport, last airborne point) of the previous flight, when where it landed is known
+    Beyond what was seen, only certainties are added, and their times stay unknown:
+    - first seen climbing low with exactly one airport in range: it left from there (`only_airport`);
+    - an unseen departure right after a known landing, or an unseen landing right before a seen departure, when the
+      gap is too short for an unseen flight in between. Any stop elsewhere costs at least the straight line at 550 kt
+      plus 15 min on the ground, so a shorter gap means it left from (or went to) that airport."""
+    found = []
     bounds = [0] + splits(trace) + [len(trace)]
     for start, stop in zip(bounds, bounds[1:]):
         pts = trace[start:stop]
@@ -135,15 +152,19 @@ def legs(trace, day_start, grid):
         cs = next((c for c in map(callsign, pts) if c), "")
         dep, t0 = end(grid, pts, i0, i0 - 1, day_start, False)
         arr, t1 = end(grid, pts, i1, i1 + 1 if i1 + 1 < len(pts) else -1, day_start, True)
-        if not dep and landed and pts[i0][0] - landed[1][0] < nm(landed[1], pts[i0]) / 550 * 3600 + 900:
-            dep = landed[0]
-        # Timing from its last sighting, not the unseen touchdown, only makes the gap longer: still safe.
-        landed = (arr, pts[i1]) if arr else None
-        # No airport at either end: kept only at the day's edges, where it may join the neighbouring day's half.
-        if not dep and not arr and pts[0][0] > 300 and pts[-1][0] < 86100:
-            continue
-        out.append((cs, dep, t0, arr, t1))
-    return out
+        dep = dep or only_airport(grid, pts[i0])
+        found.append([cs, dep, t0, arr, t1, pts[i0], pts[i1], pts[0][0], pts[-1][0]])
+    no_stop = lambda a, b: b[0] - a[0] < nm(a, b) / 550 * 3600 + 900
+    seen_dep = [f[1] for f in found]  # chain only from airports found directly, never from another inference
+    seen_arr = [f[3] for f in found]
+    for k in range(1, len(found)):
+        if not found[k][1] and seen_arr[k - 1] and no_stop(found[k - 1][6], found[k][5]):
+            found[k][1] = seen_arr[k - 1]
+    for k in range(len(found) - 1):
+        if not found[k][3] and seen_dep[k + 1] and no_stop(found[k][6], found[k + 1][5]):
+            found[k][3] = seen_dep[k + 1]
+    # No airport at either end: kept only at the day's edges, where it may join the neighbouring day's half.
+    return [tuple(f[:5]) for f in found if f[1] or f[3] or f[7] <= 300 or f[8] >= 86100]
 
 
 def cmd_legs(day_start, out_path):
@@ -173,6 +194,17 @@ def merge(rows):
     return [r for r in out if r[1] or r[3]]
 
 
+def incomplete_dropped(rows, days):
+    """Drops a flight cut at midnight UTC whose other half is in a day we don't have (still flying when the newest day
+    ended, or took off before the oldest began): it isn't unknown, just incomplete, and joins up once that day exists.
+    `days` holds the days present, as days since 1970."""
+    def cut(t, at_end):
+        m = minutes(t)
+        day, into = divmod(m, 1440)
+        return t.startswith("~") and (into >= 1435 if at_end else into <= 5) and (day + 1 if at_end else day - 1) not in days
+    return [r for r in rows if not ((not r[3] and cut(r[4], True)) or (not r[1] and cut(r[2], False)))]
+
+
 def cmd_shards(days_dir, site_dir):
     files = sorted(f for f in os.listdir(days_dir) if f.endswith(".tsv.gz"))[-DAYS:]
     by_hex = defaultdict(list)
@@ -181,9 +213,10 @@ def cmd_shards(days_dir, site_dir):
             for line in fh:
                 h, cs, dep, t0, arr, t1 = line.rstrip("\n").split("\t")
                 by_hex[h].append((cs, dep, t0, arr, t1))
+    days = {(datetime.date.fromisoformat(f[:10]) - datetime.date(1970, 1, 1)).days for f in files}
     shards = defaultdict(list)
     for h, rows in by_hex.items():
-        for cs, dep, t0, arr, t1 in merge(sorted(rows, key=lambda r: minutes(r[2]))):
+        for cs, dep, t0, arr, t1 in incomplete_dropped(merge(sorted(rows, key=lambda r: minutes(r[2]))), days):
             shards[h[:4]].append(f"{h}\t{cs}\t{dep}\t{t0}\t{arr}\t{t1}\n")
     os.makedirs(os.path.join(site_dir, "h"), exist_ok=True)
     for k, lines in shards.items():
@@ -220,6 +253,16 @@ if __name__ == "__main__":
                  P(1000, -33.95, 151.18, "ground", 2, cs="QFA6"), P(960 + later, -33.6, 150.5, 9000, vr=2000), P(960 + later + 3000, -27.4, 153.1, 300),
                  P(960 + later + 3060, -27.38, 153.12, "ground")]
             assert legs(t, 0, g)[1][1:2] == (want,) and legs(t, 0, g)[1][2].startswith("~"), legs(t, 0, g)
+        # Last seen at cruise 150 nm out, then 20 min later on the ground at Brisbane, departing: it landed there.
+        t = [P(0, -33.95, 151.18, "ground", cs="QFA7"), P(60, -33.96, 151.17, 300, vr=2000), P(1200, -30.0, 152.0, 35000),
+             P(2400, -27.4, 153.12, "ground", 2, cs="QFA8"), P(2500, -27.38, 153.1, 400, vr=2000), P(3800, -20.0, 150.0, 35000)]
+        assert [(a, b) for _, a, _, b, _ in legs(t, 0, g)] == [("YSSY", "YBBN"), ("YBBN", "")]
+        # First seen climbing through 3000 ft over Alice Springs, the only airport in range: it left there. Over
+        # Launceston, strips within range make it ambiguous.
+        assert only_airport(g, P(0, -23.8, 133.9, 3000, vr=1500)) == "YBAS"
+        assert only_airport(g, P(0, -41.55, 147.2, 4000, vr=1500)) == ""
+        assert only_airport(g, P(0, -23.8, 133.9, 3000, vr=-1500)) == ""  # descending: not a departure
+        assert only_airport(g, P(0, -33.9, 151.0, 4000, vr=1500)) == ""  # Sydney basin: several airports in range
         # Down low at Sydney, unseen for an hour, then climbing out of Sydney again: two flights.
         t = [P(0, -33.0, 150.0, 20000), P(100, -33.95, 151.18, 1000, vr=-700), P(4000, -33.95, 151.18, 900, vr=1500), P(4500, -33.0, 150.0, 20000)]
         assert [(a, b) for _, a, _, b, _ in legs(t, 0, g)] == [("", "YSSY"), ("YSSY", "")]
@@ -227,6 +270,9 @@ if __name__ == "__main__":
         t = [P(0, -33.95, 151.18, "ground", cs="QFA1"), P(60, -33.95, 151.17, 300, vr=2000), P(9000, -20.0, 140.0, 30000),
              P(9100, -20.1, 140.1, 30000, cs="QFA2"), P(20000, -33.96, 151.17, 300), P(20060, -33.95, 151.18, "ground")]
         assert [(cs, a, b) for cs, a, _, b, _ in legs(t, 0, g)] == [("QFA1", "YSSY", ""), ("QFA2", "", "YSSY")]
+        # Still flying when the newest day (day 1) ended: dropped until day 2 exists. Landed unseen mid-day: kept.
+        assert incomplete_dropped([("A", "YSSY", "100", "", "~2879"), ("B", "YSSY", "1500", "", "~2000")], {1}) == [("B", "YSSY", "1500", "", "~2000")]
+        assert len(incomplete_dropped([("A", "YSSY", "100", "", "~2879")], {1, 2})) == 1
         # A flight split at midnight UTC joins up.
         assert merge([("QFA1", "YSSY", "100", "", "~1439"), ("QFA1", "", "~1440", "EGLL", "2000")]) == [("QFA1", "YSSY", "100", "EGLL", "2000")]
         print("ok")
