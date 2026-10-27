@@ -10,9 +10,9 @@ You see a plane. You tap it. You know **where it came from, where it's going, an
 
 <br>
 
-<img src="docs/promo/contrail-promo.gif" width="100%" alt="Contrail in 24 seconds: every plane overhead, live on a clean map. Tap any aircraft to see where it is and where it's going, with altitude, speed, route and the flight's real photo. Arrivals, departures and weather for any airport near you. No ads, no paywall, no account. It just works.">
+<img src="docs/promo/contrail-launch.gif" width="100%" alt="Contrail in 26 seconds: ads, paywalls and sign-ups crossed out. The sky, live: every plane overhead in real time. Tap any plane for its route, altitude and speed. Hold and drag to replay the flight's altitude and speed. Arrivals, departures and weather for any airport. Contrail: no ads, no paywalls, just works.">
 
-<sub>The whole app in 24 seconds · [watch in full quality](docs/promo/contrail-promo.mp4)</sub>
+<sub>The whole app in 26 seconds · [watch in full quality](docs/promo/contrail-launch.mp4)</sub>
 
 <br><br>
 
@@ -72,6 +72,10 @@ Your phone talks straight to free public feeds. There's no server in between to 
 **Routes it can prove.** Most trackers look up a route by flight number and show it as fact, even when the aircraft is flying something else that day. Contrail checks the plane's position and heading against the route first. If they don't agree, it says so instead of guessing. Airlines reuse callsigns, so the published route is sometimes simply wrong: Qatar's QTR65Q into Adelaide is listed everywhere as Doha to Colombo. Then Contrail reads the real route off where the plane actually flew: the airport its flown path started at, and the one it's on final approach to or has landed at. Landing times are always marked *est.*, because that's what they are.
 
 **Where it's actually been.** Tap a plane and its whole flown path is drawn back to the runway it left from, coloured by altitude. Beside it is a profile chart of altitude and speed for the whole flight, which you can scrub through.
+
+**Where it flew before today.** Every plane's flights from the last two weeks, from where to where and when, each time in that airport's own time zone. It comes from adsb.lol's openly licensed daily history, boiled down by a free daily job into a tiny file per few hundred aircraft, so looking one up costs a few kilobytes.
+
+**Weather the way pilots see it.** Satellite clouds, day and night. Turbulence, icing, thunderstorm, ash and cyclone warnings drawn where they apply, with their heights. Wind as drifting streaks at the surface, at 18,000 ft and at airliner cruising height. All free, all optional, and all off by default.
 
 **Any airport, live.** Weather in plain language, the runway in use (worked out from the planes actually using it, or from the wind when it's quiet), and arrivals and departures boards. There's no free public schedule, so the boards are built live from the aircraft actually inbound and outbound. A flight shows up when it's in the air, with its estimate counting down.
 
@@ -218,7 +222,7 @@ It needs iOS 26. With a free Apple ID, the app has to be re-run from Xcode every
 
 ## Under the hood
 
-Kotlin and Jetpack Compose with MapLibre on Android, SwiftUI and MapKit on iPhone, and no backend. Both apps share the same bundled airport data and the same logic, tested on each side. Live positions come in about once a second from two volunteer ADS-B networks that serve the same format. Everything else is looked up only when you tap something.
+Kotlin and Jetpack Compose with MapLibre on Android, SwiftUI and MapKit on iPhone, and no backend server. The one thing this repo hosts is the past-flights files: a GitHub Actions job builds them once a day and publishes them on GitHub Pages. Both apps share the same bundled airport data and the same logic, tested on each side. Live positions come in about once a second from two volunteer ADS-B networks that serve the same format. Everything else is looked up only when you tap something.
 
 <img src="docs/architecture.svg" width="100%" alt="How Contrail works: live positions from adsb.lol and adsb.fi go through a scheduler into the live traffic store, then each plane's track predicts its position for the map. Tapping a plane runs lookups to adsbdb, airport-data, OpenSky and logo sets, and a route check against the live track and bundled airport data fills the aircraft sheet. Airport boards read the live traffic and bundled data.">
 
@@ -289,7 +293,7 @@ app/src/test/  66 JVM tests
 
 ## Privacy
 
-Your location is used to centre the map and to find planes near you, and nothing else. The only thing that leaves your phone is a point and a radius ("which planes are near here?") sent to the live feeds, the same way any map asks for the area you're looking at. The app doesn't keep it, and there's no account for it to be tied to. There's no account, no analytics, no ads, no crash reporting and no server of my own. The app only talks to the public sources listed below, and the About page lists them too, with live status.
+Your location is used to centre the map and to find planes near you, and nothing else. The only thing that leaves your phone is a point and a radius ("which planes are near here?") sent to the live feeds, the same way any map asks for the area you're looking at. The app doesn't keep it, and there's no account for it to be tied to. There's no account, no analytics, no ads, no crash reporting and no server of my own. Past flights are plain files on this repo's GitHub Pages; asking for one sends only the first four characters of that plane's transponder code. The app only talks to the public sources listed below, and the About page lists them too, with live status.
 
 ## Data & licence
 
@@ -298,12 +302,16 @@ All sources are free and keyless. None of them needed a sign-up.
 | What | From |
 |:--|:--|
 | Live positions | [adsb.lol](https://adsb.lol) (ODbL) and [adsb.fi](https://adsb.fi), fed by volunteer receivers |
-| Aircraft details and routes | [adsbdb](https://www.adsbdb.com) |
+| Aircraft details and routes | [adsbdb](https://www.adsbdb.com), plus multi-stop route legs from [adsb.lol](https://adsb.lol) |
 | Flown paths | [OpenSky Network](https://opensky-network.org) |
+| Past flights | [adsb.lol](https://github.com/adsblol) daily history (ODbL), processed by this repo's [daily job](.github/workflows/history.yml) and served from GitHub Pages under the same licence |
 | Aircraft photos | [airport-data.com](https://www.airport-data.com), credited to each photographer |
 | Airline logos | [Jxck-S/airline-logos](https://github.com/Jxck-S/airline-logos), [sexym0nk3y/airline-logos](https://github.com/sexym0nk3y/airline-logos) |
 | Airport weather | [aviationweather.gov](https://aviationweather.gov) |
 | Rain radar | [RainViewer](https://www.rainviewer.com) |
+| Satellite clouds | [NASA GIBS](https://earthdata.nasa.gov/gibs): Himawari, GOES-West and GOES-East |
+| Hazard warnings | International SIGMETs from [aviationweather.gov](https://aviationweather.gov) |
+| Wind | [Open-Meteo](https://open-meteo.com) |
 | Maps | [OpenFreeMap](https://openfreemap.org) and [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors; satellite by [EOX](https://maps.eox.at) |
 | Airports, runways, airlines | [OurAirports](https://ourairports.com) (public domain), [OpenFlights](https://openflights.org) (ODbL), bundled in the app |
 
