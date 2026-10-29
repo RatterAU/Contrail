@@ -14,8 +14,8 @@ android {
         applicationId = "app.contrail"
         minSdk = 29
         targetSdk = 37
-        versionCode = 3
-        versionName = "0.3"
+        versionCode = 4
+        versionName = "0.4"
         // The family phone is arm64; other ABIs only bloat the APK.
         ndk { abiFilters += "arm64-v8a" }
     }

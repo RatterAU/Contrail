@@ -45,8 +45,8 @@ targets:
         NSCameraUsageDescription: "Sky view labels the planes you point your camera at."
         NSMotionUsageDescription: "Sky view and Near you use the compass to show which way to look."
         ITSAppUsesNonExemptEncryption: false
-        CFBundleShortVersionString: "0.1"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.4"
+        CFBundleVersion: "4"
 
   ContrailTests:
     type: bundle.unit-test

@@ -16,9 +16,9 @@ You see a plane. You tap it. You know **where it came from, where it's going, an
 
 <br><br>
 
-### [Get it for Android](../../releases/latest) &nbsp;·&nbsp; [Build it for iPhone](#on-an-iphone)
+### [Get it for Android](#on-android) &nbsp;·&nbsp; [Get it for iPhone](#on-an-iphone)
 
-<sub>Free, about 20 MB, installs in two minutes. No store, no sign-up.</sub>
+<sub>Free, no store, no sign-up. About 20 MB on Android, 2 MB on iPhone.</sub>
 
 <br>
 
@@ -73,7 +73,7 @@ Your phone talks straight to free public feeds. There's no server in between to 
 
 **Where it's actually been.** Tap a plane and its whole flown path is drawn back to the runway it left from, coloured by altitude. Beside it is a profile chart of altitude and speed for the whole flight, which you can scrub through.
 
-**Where it flew before today.** Every plane's flights from the last two weeks, from where to where and when, each time in that airport's own time zone. It comes from adsb.lol's openly licensed daily history, boiled down by a free daily job into a tiny file per few hundred aircraft, so looking one up costs a few kilobytes.
+**Where it flew before today, and a replay of each flight.** Every plane's flights from the last two weeks, grouped by day, from where to where and when, each time in that airport's own time zone. Tap one to watch it again: the plane flies its real path on the map at up to 1000× speed, and you can drag through the flight to any moment, with the clock, altitude and speed alongside. An airport or time is only stated when the plane was actually seen there. When an end wasn't seen but the path fits the published route, it's filled in and labelled *Scheduled*, never passed off as seen. It comes from adsb.lol's openly licensed daily history, boiled down by a free daily job into a tiny file per few hundred aircraft, so looking one up costs a few kilobytes.
 
 **Weather the way pilots see it.** Satellite clouds, day and night. Turbulence, icing, thunderstorm, ash and cyclone warnings drawn where they apply, with their heights. Wind as drifting streaks at the surface, at 18,000 ft and at airliner cruising height. All free, all optional, and all off by default.
 
@@ -122,20 +122,22 @@ Your phone talks straight to free public feeds. There's no server in between to 
 
 ## Install it
 
-There's no Play Store or App Store listing. It's a free side project. On Android you install it straight from this page in about two minutes. On iPhone you build it yourself in Xcode ([below](#on-an-iphone)).
+There's no Play Store or App Store listing. It's a free side project. On Android you install it straight from this page in about two minutes. On iPhone it runs inside [LiveContainer](#on-an-iphone).
 
-### What you need
+### On Android
+
+#### What you need
 
 | | |
 |:--|:--|
 | **An Android phone** | Android 10 or newer with a 64-bit processor. That's almost any phone from 2019 onwards |
 | **About 20 MB** | That's the whole app, including every airport in the world |
 
-### Step 1: Download it
+#### Step 1: Download it
 
 On your phone, open the [**latest release**](../../releases/latest) and tap **`app-release.apk`** to download it.
 
-### Step 2: Allow the install
+#### Step 2: Allow the install
 
 When the download finishes, tap it to open it. Android will say something like *"For your security, your phone is not allowed to install unknown apps from this source"*.
 
@@ -143,7 +145,7 @@ Tap **Settings**, turn on **Allow from this source**, then go back.
 
 <sub>This permission is only for the app you downloaded it with (usually Chrome). You can turn it off again afterwards.</sub>
 
-### Step 3: Install and open it
+#### Step 3: Install and open it
 
 Tap **Install**, then **Open**. Allow location when it asks, so the map can start where you are and *Planes near me* can work. That's it.
 
@@ -210,13 +212,58 @@ There's an iPhone version too, in [`ios/`](ios). It isn't a copy of the Android 
 
 </div>
 
-It isn't on the App Store, so you build it yourself on a Mac:
+It isn't on the App Store. The easy way to run it is inside **[LiveContainer](https://github.com/LiveContainer/LiveContainer)**, a free app that runs other apps without a computer, without re-signing every 7 days and without using up one of the 3 app slots a free Apple ID gets.
+
+#### What you need
+
+| | |
+|:--|:--|
+| **An iPhone on iOS 26 or newer** | |
+| **LiveContainer, already set up** | If it already opens other apps, you're set. If not, follow [its install guide](https://livecontainer.github.io/docs/installation) first. LiveContainer is installed with SideStore or AltStore, and those need an Apple ID. Contrail itself needs no account |
+
+#### Install
+
+1. Copy this link:
+
+   ```
+   https://github.com/RatterAU/Contrail/releases/latest/download/Contrail.ipa
+   ```
+
+2. Open LiveContainer, tap **+** at the top right of *My Apps*, choose **Install from URL**, paste the link, and tap **OK**.
+3. Tap **Contrail** to open it. Allow location when it asks, so the map can start where you are.
+
+> [!IMPORTANT]
+> **Don't AirDrop the `.ipa` to your phone.** iOS tries to install it as an ordinary app, leaves a grey icon on the home screen that won't open, and never saves the file. Use the link above instead. If you must move a file over, zip it first; a `.zip` is saved to Files.
+
+> [!TIP]
+> **Updating:** do the same again with the same link, which always points to the newest version. LiveContainer replaces the old one and keeps your settings.
+
+<details>
+<summary><b>If LiveContainer says "JIT-less mode is required" or asks for a certificate</b></summary>
+
+<br>
+
+That's LiveContainer's own one-time setup, not something about Contrail. On iOS 26 it signs every app it runs with the certificate LiveContainer itself was installed with, so it needs a copy of that certificate:
+
+- **Installed LiveContainer with SideStore or AltStore** (or the *LiveContainer+SideStore* build): in LiveContainer's **Settings**, tap **Import Certificate From SideStore** (or *AltStore*, or *Built-in SideStore*). That store has to be signed in at that moment.
+- **Installed it another way** (Sideloadly, AltStore, Xcode): export the certificate from the Mac that installed it. In Xcode, open **Settings → Accounts**, select your team, click **Manage Certificates…**, right-click the *Apple Development* certificate and choose **Export Certificate**, then set a password. Zip the `.p12` file before AirDropping it (iOS swallows a bare `.p12` as a profile), unzip it in Files, then in LiveContainer go to **Settings → Import Certificate** and enter that password. It must be the certificate of the same Apple ID that installed LiveContainer.
+
+Once that's done, every app in LiveContainer, Contrail included, opens without asking again. **Settings → JIT-Less Mode Diagnose** shows whether it's set up; **Test JIT-Less Mode** should pass.
+
+</details>
+
+<details>
+<summary><b>Or build it yourself in Xcode</b></summary>
+
+<br>
 
 1. Install [Xcode](https://apps.apple.com/app/xcode/id497799835), which is free.
 2. Download this repo and open `ios/Contrail.xcodeproj`.
 3. Plug in your iPhone, pick it as the destination, set your Apple ID as the signing team, and press Run.
 
-It needs iOS 26. With a free Apple ID, the app has to be re-run from Xcode every 7 days, and you can have at most 3 such apps on the phone at once.
+With a free Apple ID, the app has to be re-run from Xcode every 7 days, and you can have at most 3 such apps on the phone at once.
+
+</details>
 
 <sub>The project is generated from `ios/project.yml` by [XcodeGen](https://github.com/yonaskolb/XcodeGen). You only need it if you change that file.</sub>
 
