@@ -75,7 +75,7 @@ private struct Summary: View {
             tile("\(flights.count)", "Flights")
             tile(airports.isEmpty ? Fmt.none : "\(airports.count)", "Airports")
             if let top {
-                tile("\(top.key.map(PastFormat.code).joined(separator: "–")) ×\(top.value.count)", "Most flown").layoutPriority(1)
+                tile("\(top.key.map(PastFormat.code).joined(separator: "–")) ×\(top.value.count)", "Most flown")
             }
         }
     }

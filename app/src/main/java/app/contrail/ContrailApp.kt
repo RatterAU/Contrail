@@ -55,7 +55,7 @@ class AppContainer(val app: Application) {
     val clock: () -> Long = System::currentTimeMillis
 
     val http = HttpClient(OkHttp) {
-        install(UserAgent) { agent = "Contrail/${BuildInfo.VERSION} (Android; personal flight tracker)" }
+        install(UserAgent) { agent = "Contrail/${BuildConfig.VERSION_NAME} (Android; personal flight tracker)" }
         install(HttpTimeout) {
             connectTimeoutMillis = 6_000
             requestTimeoutMillis = 10_000
@@ -72,6 +72,3 @@ class AppContainer(val app: Application) {
     val settings = SettingsRepository(app)
 }
 
-object BuildInfo {
-    const val VERSION = "0.1"
-}

@@ -49,17 +49,17 @@ Your phone talks straight to free public feeds. There's no server in between to 
 
 <div align="center">
 
-<img src="docs/screenshots/map-dark.png" width="270" alt="Dark map of Adelaide with 49 live aircraft drawn as coloured plane icons by altitude, airline tail logos on the airliners, and callsign labels">
+<img src="docs/screenshots/map.png" width="270" alt="Dark map of Adelaide with 44 live aircraft drawn as plane icons coloured by altitude, a Qantas tail logo on the airliner, and callsign labels">
 &nbsp;
-<img src="docs/screenshots/aircraft.png" width="270" alt="Aircraft sheet for Virgin Australia VA223: Melbourne to Adelaide, took off 56 minutes ago, lands in an estimated 6 minutes at 1:17 PM, 96% of the way, with a Right now card saying it's on final approach with a 6 knot crosswind, and a flight profile chart">
+<img src="docs/screenshots/aircraft.png" width="270" alt="Aircraft sheet for Virgin Australia VA226, Adelaide to Melbourne: took off 8 minutes ago, lands in an estimated 51 minutes at 5:51 PM Melbourne time, 12% of the way, climbing through 20,500 ft to 37,000 ft on autopilot with a 9 knot tailwind">
 &nbsp;
-<img src="docs/screenshots/airport.png" width="270" alt="Adelaide Airport sheet: live weather showing VFR, 17 degrees, wind 270 at 6 knots, runway 23 in use, and an arrivals board where VA223 has landed at 1:16 PM and the next Qantas and Jetstar arrivals are estimated">
+<img src="docs/screenshots/airport.png" width="270" alt="Adelaide Airport sheet: live weather showing VFR, 23 degrees, wind 210 at 10 knots, runway 23 likely in use from the wind, and an arrivals board with Virgin and Jetstar flights estimated">
 
 <sub><b>See it</b> · <b>Tap it</b> · <b>Know where it's landing</b></sub>
 
 <br>
 
-<sub>Real screenshots, real traffic, nothing mocked up. The app estimated VA223 would land at 1:17. It landed at 1:16.</sub>
+<sub>Real screenshots, real traffic, nothing mocked up.</sub>
 
 </div>
 
@@ -103,17 +103,31 @@ Your phone talks straight to free public feeds. There's no server in between to 
 
 <table>
 <tr>
-<td align="center" width="20%"><img src="docs/screenshots/trail.png" width="190" alt="Dark map with an Alliance Airlines E190 selected, its flown path drawn as a line shading from green to yellow to orange as it descended into Adelaide"></td>
-<td align="center" width="20%"><img src="docs/screenshots/photo.png" width="190" alt="Aircraft sheet for a parked QantasLink Dash 8 at Adelaide, with a photo of that exact aircraft credited to its photographer, and its type, registration, age and size"></td>
-<td align="center" width="20%"><img src="docs/screenshots/nearby.png" width="190" alt="Near you: the closest plane, VOZ223, 13 km away, look NE 3 degrees up, then a list of nearby aircraft with direction, elevation, distance and altitude"></td>
-<td align="center" width="20%"><img src="docs/screenshots/layers.png" width="190" alt="Map layers sheet: map style segmented control with Auto, Dark, Light, Streets and Satellite, toggles for rain radar, airports, callsign labels and trails, and the altitude colour key"></td>
-<td align="center" width="20%"><img src="docs/screenshots/about.png" width="190" alt="About page: version 0.1, accounts or tracking none, both live feeds working at around 400 ms, and the list of data sources"></td>
+<td align="center" width="20%"><img src="docs/screenshots/route.png" width="190" alt="Wide map with Virgin VA226 selected: its flown path out of Adelaide and the dashed route ahead to Melbourne, with the sheet half open"></td>
+<td align="center" width="20%"><img src="docs/screenshots/route-check.png" width="190" alt="Qatar Airways QR25C over South Australia: a note says it's listed as San Francisco to Doha, but this plane isn't on that route, so the listing is likely out of date"></td>
+<td align="center" width="20%"><img src="docs/screenshots/photo.png" width="190" alt="A Qatar Airways Boeing 777 in flight, credited to its photographer, above its registration A7-BEF, type, size and transponder code"></td>
+<td align="center" width="20%"><img src="docs/screenshots/past-flights.png" width="190" alt="Past flights for a Virgin 737: 62 flights and 12 airports in 14 days, Brisbane to Sydney flown most, and yesterday's flights with each end's airport and local time"></td>
+<td align="center" width="20%"><img src="docs/screenshots/replay.png" width="190" alt="Replay of Virgin VOZ1393 from Adelaide to Brisbane, paused at 11:47 AM at 37,000 ft and 545 kt, with the altitude profile, speed choices from 10x to 1000x, and the distance, highest altitude and top speed"></td>
 </tr>
 <tr>
-<td align="center"><sub><b>Where it's been</b><br>Coloured by altitude</sub></td>
+<td align="center"><sub><b>Where it's going</b><br>Flown path and route</sub></td>
+<td align="center"><sub><b>Routes it can prove</b><br>Says when a listing is wrong</sub></td>
 <td align="center"><sub><b>That exact plane</b><br>Photographer credited</sub></td>
+<td align="center"><sub><b>Its last two weeks</b><br>Every flight, local times</sub></td>
+<td align="center"><sub><b>Replay any flight</b><br>Up to 1000×, drag to scrub</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/screenshots/replay-map.png" width="190" alt="The replayed flight on the map: its path from Adelaide to Brisbane, the plane mid-flight over New South Wales, and today's live traffic dimmed"></td>
+<td align="center"><img src="docs/screenshots/weather.png" width="190" alt="Australia with satellite clouds, turbulence, icing and storm warning areas outlined, and wind streaks at 34,000 ft"></td>
+<td align="center"><img src="docs/screenshots/nearby.png" width="190" alt="Near you: the closest plane is a Royal Flying Doctor Service PC-24, 0.9 km away at 250 ft, look SW 9 degrees up, then a list of nearby aircraft with direction, distance and altitude"></td>
+<td align="center"><img src="docs/screenshots/layers.png" width="190" alt="Map layers sheet: map styles Auto, Dark, Light, Streets and Satellite, and weather toggles for rain radar, clouds, hazards and wind at the surface, FL180 or FL340"></td>
+<td align="center"><img src="docs/screenshots/about.png" width="190" alt="About page: version 0.4, accounts or tracking none, both live feeds working at about 400 ms, and the list of data sources"></td>
+</tr>
+<tr>
+<td align="center"><sub><b>Watch it fly again</b><br>On the map, live traffic dimmed</sub></td>
+<td align="center"><sub><b>Pilot weather</b><br>Clouds, hazards, winds aloft</sub></td>
 <td align="center"><sub><b>Near you</b><br>Which way to look</sub></td>
-<td align="center"><sub><b>Your map</b><br>Five styles, radar</sub></td>
+<td align="center"><sub><b>Your map</b><br>Five styles, four weather layers</sub></td>
 <td align="center"><sub><b>Nothing hidden</b><br>Every source listed</sub></td>
 </tr>
 </table>
@@ -204,13 +218,45 @@ There's an iPhone version too, in [`ios/`](ios). It isn't a copy of the Android 
 
 <div align="center">
 
-<img src="docs/screenshots/ios/map.png" width="250" alt="iPhone map of Melbourne at night with Rex flight ZL3577 selected: its flown path drawn from the runway, the dashed route ahead to Burnie, and the aircraft sheet half open below">
+<img src="docs/screenshots/ios/route.png" width="250" alt="iPhone map near Adelaide with Virgin VA716 selected, its flown path and the dashed route ahead, and the aircraft sheet half open: Perth to Adelaide, landing in an estimated 17 minutes">
 &nbsp;
-<img src="docs/screenshots/ios/aircraft.png" width="250" alt="iPhone aircraft sheet for Rex ZL3577, Melbourne to Burnie: took off 5 minutes ago, lands in an estimated 51 minutes, climbing through 7,900 ft out of Melbourne, with a flight profile chart">
+<img src="docs/screenshots/ios/replay.png" width="250" alt="iPhone replay of Virgin VOZ1889 from Perth to Newman, paused at 3:30 PM at 36,952 ft, with Newman marked Scheduled because the plane wasn't seen landing but its path matches the published route">
 &nbsp;
-<img src="docs/screenshots/ios/airport.png" width="250" alt="iPhone Melbourne Airport sheet: live weather, runway 16 in use, and an arrivals board with Virgin flights on approach and en route">
+<img src="docs/screenshots/ios/weather.png" width="250" alt="iPhone map of Australia with satellite clouds, hazard warning areas and wind streaks at 34,000 ft">
 
 </div>
+
+<details>
+<summary><b>More iPhone screenshots</b></summary>
+
+<br>
+
+<div align="center">
+
+<table>
+<tr>
+<td align="center" width="25%"><img src="docs/screenshots/ios/map.png" width="170" alt="iPhone map of Adelaide with live aircraft coloured by altitude and airline logos"></td>
+<td align="center" width="25%"><img src="docs/screenshots/ios/aircraft.png" width="170" alt="iPhone aircraft sheet for Virgin VA716, Perth to Adelaide, 94% of the way, descending towards Adelaide with a 22 knot tailwind"></td>
+<td align="center" width="25%"><img src="docs/screenshots/ios/photo.png" width="170" alt="iPhone aircraft sheet with a credited photo of a Qatar Airways Boeing 777, its details, and a summary of its last 14 days: 25 flights, 10 airports, JFK to Doha flown most"></td>
+<td align="center" width="25%"><img src="docs/screenshots/ios/past-flights.png" width="170" alt="iPhone past flights list grouped by day, with ends marked Scheduled where the plane wasn't seen but its path matches the published route"></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/screenshots/ios/replay-map.png" width="170" alt="iPhone map showing a replayed flight from Perth heading north, the plane mid-flight and live traffic dimmed"></td>
+<td align="center"><img src="docs/screenshots/ios/nearby.png" width="170" alt="iPhone Near you: the closest plane is Rex RXA4134, 0.8 km away at 200 ft, look SW 8 degrees up"></td>
+<td align="center"><img src="docs/screenshots/ios/layers.png" width="170" alt="iPhone map layers sheet with rain radar, clouds, hazards and wind at FL340"></td>
+<td align="center"><img src="docs/screenshots/ios/about.png" width="170" alt="iPhone About page: version 0.4, no accounts or tracking, adsb.lol busy and retrying while adsb.fi answers, and the data sources"></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/screenshots/ios/airport.png" width="170" alt="iPhone Adelaide Airport sheet: weather, runway 23 in use, and arrivals with Singapore Airlines landed and Qantas en route"></td>
+<td align="center"><img src="docs/screenshots/ios/settings.png" width="170" alt="iPhone Settings: altitude, speed and distance units, and the clock"></td>
+<td></td>
+<td></td>
+</tr>
+</table>
+
+</div>
+
+</details>
 
 It isn't on the App Store. The easy way to run it is inside **[LiveContainer](https://github.com/LiveContainer/LiveContainer)**, a free app that runs other apps without a computer, without re-signing every 7 days and without using up one of the 3 app slots a free Apple ID gets.
 

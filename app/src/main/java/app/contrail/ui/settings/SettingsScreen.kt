@@ -19,7 +19,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.contrail.AppContainer
-import app.contrail.BuildInfo
+import app.contrail.BuildConfig
 import app.contrail.data.feed.SourceHealth
 import app.contrail.domain.AltitudeUnit
 import app.contrail.domain.ClockStyle
@@ -56,7 +56,7 @@ fun AboutScreen(container: AppContainer, onClose: () -> Unit) {
     val health by container.scheduler.health.collectAsState()
     Page("About", onClose) {
         InsetGroup {
-            row { ValueRow("Version", BuildInfo.VERSION) }
+            row { ValueRow("Version", BuildConfig.VERSION_NAME) }
             row { ValueRow("Accounts or tracking", "None") }
         }
         InsetGroup(header = "Live feeds", footer = "Aircraft positions come from volunteer receiver networks. If one feed fails, the other takes over.") {
