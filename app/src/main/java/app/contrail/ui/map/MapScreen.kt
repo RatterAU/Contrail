@@ -320,6 +320,7 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                     }
                 }
                 val pastView = vm.past.value
+                c.dimLive(pastView != null)
                 if (pastView == null) {
                     pastFitted = null
                     c.render(ac, trail, route, MapController.scrubFeatures(scrubPoint))
@@ -327,7 +328,10 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                     // A past flight replaces the live trail and route; live planes stay on the map.
                     val path = pastView.path.orEmpty()
                     val ends = listOf(pastView.flight.from, pastView.flight.to).map { code -> code?.let { static?.airport(it) } }
-                    c.render(ac, MapController.pastTrailFeatures(path), MapController.endFeatures(*ends.toTypedArray()), MapController.scrubFeatures(scrubPoint))
+                    val replay = vm.replay.value
+                    val plane = selTrack?.let { iconName(Shape.of(it.aircraft), AltitudeColors.SELECTED_BAND) }
+                    c.render(ac, MapController.pastTrailFeatures(path), MapController.endFeatures(*ends.toTypedArray()),
+                        if (replay != null && plane != null) MapController.replayFeatures(replay, plane, Shape.of(selTrack.aircraft).size * 1.3f) else MapController.scrubFeatures(scrubPoint))
                     if (path.size >= 2 && pastFitted !== pastView.flight) {
                         pastFitted = pastView.flight
                         val dm = context.resources.displayMetrics
@@ -451,7 +455,9 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 if (ap != null) {
                     AirportSheet(ap, onAircraft = ::flyToAircraft, onClose = { vm.selectAirport(null) })
                 } else if (track != null && pastView != null) {
-                    pastView!!.let { v -> PastFlightSheet(v.flight, v.path, v.failed, onBack = vm::closePast, onScrub = { vm.scrub.value = it }) }
+                    pastView!!.let { v ->
+                        PastFlightSheet(v.flight, v.path, v.failed, v.all, onOpen = { vm.openPast(v.hex, it) }, onBack = vm::closePast, onFrame = { vm.replay.value = it })
+                    }
                 } else if (track != null) {
                     AircraftSheet(
                         track = track,
@@ -460,7 +466,7 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                         onFollow = { vm.setFollowing(!following) },
                         onClose = { vm.select(null) },
                         onScrub = { vm.scrub.value = it },
-                        onPast = { vm.openPast(track.hex, it) },
+                        onPast = { f, all -> vm.openPast(track.hex, f, all) },
                     )
                 } else {
                     Spacer(Modifier.size(1.dp))

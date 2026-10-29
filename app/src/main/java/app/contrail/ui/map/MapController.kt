@@ -12,6 +12,7 @@ import app.contrail.data.enrich.Airport
 import app.contrail.data.feed.TrafficRepository
 import app.contrail.domain.Filters
 import app.contrail.domain.Geo
+import app.contrail.domain.Replay
 import app.contrail.domain.Track
 import app.contrail.domain.TrailPoint
 import org.maplibre.android.camera.CameraPosition
@@ -49,6 +50,7 @@ import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
 import org.maplibre.android.style.layers.PropertyFactory.iconImage
 import org.maplibre.android.style.layers.PropertyFactory.iconOpacity
+import org.maplibre.android.style.layers.PropertyFactory.textOpacity
 import org.maplibre.android.style.layers.PropertyFactory.iconRotate
 import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
 import org.maplibre.android.style.layers.PropertyFactory.iconSize
@@ -92,6 +94,7 @@ import kotlin.math.sin
 import org.maplibre.android.style.layers.PropertyFactory.iconOffset
 import org.maplibre.android.style.layers.PropertyFactory.iconAnchor
 import org.maplibre.android.style.expressions.Expression.has
+import org.maplibre.android.style.expressions.Expression.not
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -275,7 +278,7 @@ class MapController(
                     circleColor("#FFFFFF"),
                     circleStrokeColor(accent),
                     circleStrokeWidth(3f),
-                ),
+                ).withFilter(not(has("icon"))),
             )
             st.addLayer(
                 SymbolLayer(AIRCRAFT_LAYER, AIRCRAFT_SOURCE).withProperties(
@@ -309,6 +312,18 @@ class MapController(
                     symbolSortKey(get("z")),
                 ).withFilter(has("logo")).apply { minZoom = LOGO_MIN_ZOOM },
             )
+            // A past flight's replay: the plane itself, above live traffic.
+            st.addLayer(
+                SymbolLayer(REPLAY_LAYER, SCRUB_SOURCE).withProperties(
+                    iconImage(get("icon")),
+                    iconRotate(get("rot")),
+                    iconSize(get("size")),
+                    iconOpacity(get("op")),
+                    iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+                    iconAllowOverlap(true),
+                    iconIgnorePlacement(true),
+                ).withFilter(has("icon")),
+            )
             logoImages.forEach { (id, bmp) -> st.addImage(id, bmp) }
             applyToggles(st)
             if (locationAllowed) enableLocation()
@@ -322,7 +337,19 @@ class MapController(
         loaded()?.let(::applyToggles)
     }
 
+    private var liveDimmed = false
+
+    /** Live traffic fades back while a past flight is shown, so its path and replayed plane stand out. */
+    fun dimLive(dim: Boolean) {
+        if (dim == liveDimmed) return
+        liveDimmed = dim
+        loaded()?.let(::applyToggles)
+    }
+
     private fun applyToggles(st: Style) {
+        val fade = if (liveDimmed) 0.3f else 1f
+        st.getLayer(AIRCRAFT_LAYER)?.setProperties(iconOpacity(product(get("op"), literal(fade))), textOpacity(fade))
+        st.getLayer(AIRCRAFT_LOGO_LAYER)?.setProperties(iconOpacity(product(get("op"), literal(fade))))
         val vis = visibility(if (showAirports) Property.VISIBLE else Property.NONE)
         listOf(AIRPORT_LAYER_L, AIRPORT_LAYER_M, AIRPORT_LAYER_S).flatMap { listOf(it, "$it-dot") }.forEach { st.getLayer(it)?.setProperties(vis) }
         st.getLayer(AIRCRAFT_LAYER)?.setProperties(
@@ -514,6 +541,7 @@ class MapController(
         const val AIRCRAFT_LOGO_LAYER = "aircraft-logo-layer"
         const val SCRUB_SOURCE = "scrub"
         const val SCRUB_LAYER = "scrub-layer"
+        const val REPLAY_LAYER = "replay-layer"
         const val AIRPORT_SOURCE = "airports"
         const val AIRPORT_LAYER_L = "airports-large"
         const val AIRPORT_LAYER_M = "airports-medium"
@@ -711,6 +739,15 @@ class MapController(
             }
             return listOfNotNull(name, levels).joinToString("\n")
         }
+
+        /** The replayed plane at [f], drawn with [icon]; faded across a coverage gap, where its position is a guess. */
+        fun replayFeatures(f: Replay.Frame, icon: String, size: Float): FeatureCollection =
+            FeatureCollection.fromFeature(Feature.fromGeometry(Point.fromLngLat(f.lon, f.lat)).apply {
+                addStringProperty("icon", icon)
+                addNumberProperty("rot", f.heading)
+                addNumberProperty("size", size)
+                addNumberProperty("op", if (f.gap) 0.5 else 1.0)
+            })
 
         fun scrubFeatures(p: TrailPoint?): FeatureCollection =
             p?.let { FeatureCollection.fromFeature(Feature.fromGeometry(Point.fromLngLat(it.lon, it.lat))) } ?: EMPTY

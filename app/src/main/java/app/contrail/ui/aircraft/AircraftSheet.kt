@@ -108,7 +108,7 @@ fun AircraftSheet(
     onFollow: () -> Unit,
     onClose: () -> Unit,
     onScrub: (TrailPoint?) -> Unit,
-    onPast: (PastFlight) -> Unit = {},
+    onPast: (PastFlight, List<PastFlight>) -> Unit = { _, _ -> },
 ) {
     val a = track.aircraft
     // Read only inside the parts that show time, so the 1 s tick doesn't recompose the whole sheet.
@@ -206,7 +206,7 @@ private fun Header(a: Aircraft, flightNumber: String?, airline: String?, typeNam
 }
 
 @Composable
-private fun rememberAirlineLogo(icao: String?): Bitmap? {
+internal fun rememberAirlineLogo(icao: String?): Bitmap? {
     val logos = (LocalContext.current.applicationContext as ContrailApp).container.logos
     return produceState(icao?.let(logos::peek), icao) { value = icao?.let { logos.get(it) } }.value
 }
@@ -365,145 +365,9 @@ private fun AboutAircraft(a: Aircraft, info: AircraftInfo?, airline: String?) {
     }
 }
 
-/** Earlier flights from the daily history (last 14 days, up to yesterday), newest first. Hidden when none are known. */
-@Composable
-private fun PastFlights(hex: String, onOpen: (PastFlight) -> Unit) {
-    val history = (LocalContext.current.applicationContext as ContrailApp).container.history
-    // null while loading; a failed download says so rather than hiding the card.
-    val flights by produceState<Result<List<PastFlight>>?>(null, hex) {
-        value = history.past(hex)?.let { Result.success(it) } ?: Result.failure(Exception())
-    }
-    val list = flights?.getOrNull() ?: emptyList()
-    if (flights == null) return
-    var all by rememberSaveable(hex) { mutableStateOf(false) }
-    val cs = MaterialTheme.colorScheme
-    val data = StaticData.now()
-    Surface(shape = MaterialTheme.shapes.medium, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Past flights", style = MaterialTheme.typography.titleSmall)
-            when {
-                flights!!.isFailure -> Text("Couldn't load past flights. Check your connection.", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
-                list.isEmpty() -> Text("No flights seen in the last 14 days.", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
-            }
-            (if (all) list else list.take(5)).forEach { f ->
-                val from = f.from?.let { data?.airport(it) }
-                val to = f.to?.let { data?.airport(it) }
-                // Each end in its airport's local time, and only when the takeoff or landing was seen.
-                val dep = Instant.ofEpochMilli(f.departed).atZone(from?.tz?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault())
-                val arr = Instant.ofEpochMilli(f.arrived).atZone(to?.tz?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault())
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable(role = Role.Button) { onOpen(f) }) {
-                    Column(Modifier.weight(1f)) {
-                        Text("${from?.shortName ?: f.from ?: "Unknown"} → ${to?.shortName ?: f.to ?: "Unknown"}",
-                            style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(listOfNotNull(dep.format(DAY), f.callsign).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                    }
-                    val times = when {
-                        f.departedSeen && f.arrivedSeen -> "${Fmt.time(dep)}–${Fmt.time(arr)}"
-                        f.departedSeen -> "Dep ${Fmt.time(dep)}"
-                        f.arrivedSeen -> "Arr ${Fmt.time(arr)}"
-                        else -> null
-                    }
-                    times?.let {
-                        Spacer(Modifier.width(12.dp))
-                        // Each clock is in its own airport's zone, so the duration says how long it really took.
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(it, style = MaterialTheme.typography.bodyMedium.merge(Numeric), color = cs.onSurfaceVariant)
-                            if (f.departedSeen && f.arrivedSeen) {
-                                Text(Fmt.duration(f.arrived - f.departed), style = MaterialTheme.typography.bodySmall.merge(Numeric), color = cs.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
-            }
-            if (list.size > 5 && !all) {
-                Text("Show all ${list.size}", color = cs.primary, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.clickable { all = true })
-            }
-            Text("Last 14 days, up to yesterday · adsb.lol", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-        }
-    }
-    Spacer(Modifier.height(12.dp))
-}
-
-private val DAY = DateTimeFormatter.ofPattern("EEE d MMM")
-
-private fun zoneOf(ap: Airport?): ZoneId = ap?.tz?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
-
-/**
- * One earlier flight, opened from Past flights. MapScreen draws its path in place of the live trail; this shows
- * the two ends in their own local times, what the path says (distance, height, speed) and its profile.
- */
-@Composable
-fun PastFlightSheet(flight: PastFlight, path: List<TrailPoint>?, failed: Boolean, onBack: () -> Unit, onScrub: (TrailPoint?) -> Unit) {
-    val cs = MaterialTheme.colorScheme
-    val data = StaticData.now()
-    val from = flight.from?.let { data?.airport(it) }
-    val to = flight.to?.let { data?.airport(it) }
-    val dep = Instant.ofEpochMilli(flight.departed).atZone(zoneOf(from))
-    val arr = Instant.ofEpochMilli(flight.arrived).atZone(zoneOf(to))
-    Column(
-        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).navigationBarsPadding().padding(bottom = 24.dp),
-    ) {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text(flight.callsign ?: "Past flight", style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${dep.format(DAY)} · Past flight", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
-            }
-            CapsuleButton(text = "Back", icon = Icons.AutoMirrored.Rounded.KeyboardArrowLeft, onClick = onBack)
-        }
-        Spacer(Modifier.height(16.dp))
-        Surface(shape = MaterialTheme.shapes.medium, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row {
-                    PastEnd(flight.from, from, if (flight.departedSeen) "Took off ${Fmt.time(dep)}" else "Takeoff not seen", Alignment.Start, Modifier.weight(1f))
-                    PastEnd(flight.to, to, if (flight.arrivedSeen) "Landed ${Fmt.time(arr)}" else "Landing not seen", Alignment.End, Modifier.weight(1f))
-                }
-                // Each clock is in its own airport's zone, so the duration says how long it really took.
-                if (flight.departedSeen && flight.arrivedSeen) {
-                    Text("${Fmt.duration(flight.arrived - flight.departed)} in the air", style = MaterialTheme.typography.bodyMedium.merge(Numeric), color = cs.onSurfaceVariant)
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        when {
-            path == null -> PastNote("Loading the flown path…")
-            failed -> PastNote("Couldn't load the flown path. Check your connection.")
-            path.size < 2 -> PastNote("The path for this flight wasn't recorded.")
-            else -> {
-                val st = remember(path) { FlightHistory.stats(path) }
-                Surface(shape = MaterialTheme.shapes.medium, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-                    Box(Modifier.padding(16.dp)) {
-                        FactGrid(listOf("Distance flown" to Fmt.nm(st.distanceNm), "Highest" to Fmt.feet(st.topAltFt), "Top speed" to Fmt.knots(st.topSpeedKt)))
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                if (path.size >= 3) ProfileChart(path, onScrub)
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        Text("Path from adsb.lol's open data, as its receivers heard it: gaps are where none did.", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun PastEnd(code: String?, ap: Airport?, time: String, align: Alignment.Horizontal, modifier: Modifier) {
-    val cs = MaterialTheme.colorScheme
-    Column(modifier, horizontalAlignment = align) {
-        Text(ap?.iata ?: code ?: "—", style = MaterialTheme.typography.headlineMedium, color = if (code == null) cs.onSurfaceVariant else cs.onSurface)
-        Text(ap?.shortName ?: if (code == null) "Unknown" else code, style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(time, style = MaterialTheme.typography.bodySmall.merge(Numeric), color = cs.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun PastNote(text: String) {
-    Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
-    }
-}
-
 /** Label-over-value pairs in two columns. */
 @Composable
-private fun FactGrid(facts: List<Pair<String, String>>) {
+internal fun FactGrid(facts: List<Pair<String, String>>) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         facts.chunked(2).forEach { pair ->
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {

@@ -148,7 +148,7 @@ private struct WeatherCard: View {
                 }
                 Text(m.raw).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
             } else if loaded {
-                Label("No weather report for this airport.", systemImage: "cloud.slash").foregroundStyle(.secondary)
+                Label("No weather report for this airport.", systemImage: "antenna.radiowaves.left.and.right.slash").foregroundStyle(.secondary)
             } else {
                 Skeleton(width: 90, height: 36)
                 Skeleton(height: 14)

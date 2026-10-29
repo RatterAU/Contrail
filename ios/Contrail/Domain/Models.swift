@@ -58,8 +58,21 @@ struct AircraftInfo: Hashable, Sendable {
     var ownerCountry: String?
 
     var fullName: String? {
-        let s = [manufacturer, type].compactMap { $0 }.joined(separator: " ")
+        let maker = manufacturer.map(Self.shortMaker).flatMap { m in type?.lowercased().hasPrefix(m.lowercased()) == true ? nil : m }
+        let s = [maker, type].compactMap { $0 }.joined(separator: " ")
         return s.isEmpty ? nil : s
+    }
+
+    /// The registry's manufacturer as people say it: "Embraer - Empresa Brasileira De Aeronautica S.a." is Embraer,
+    /// "Piper Aircraft, Inc." is Piper, "Avions de Transport Regional" is ATR.
+    static func shortMaker(_ name: String) -> String {
+        var s = String(name.components(separatedBy: " - ")[0]).trimmingCharacters(in: .whitespaces)
+        if s.caseInsensitiveCompare("Avions de Transport Regional") == .orderedSame { return "ATR" }
+        let suffix = /(?i),?\s+(Inc\.?|Corp\.?|Corporation|Company|Industries|Aircraft|S\.a\.|GmbH|Ltd\.?)$/
+        while let m = s.firstMatch(of: suffix), m.range.lowerBound > s.startIndex {
+            s = String(s[..<m.range.lowerBound])
+        }
+        return s
     }
 }
 

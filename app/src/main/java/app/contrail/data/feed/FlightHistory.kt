@@ -23,7 +23,8 @@ import kotlin.math.cos
 
 /**
  * One earlier flight: airports are ICAO idents from the bundled table, null where the plane wasn't seen there. Times
- * are takeoff and landing when seen; otherwise only when the plane was first or last seen, good for the date alone.
+ * are takeoff and landing when seen; otherwise when the plane was first or last seen. [scheduledFrom] and
+ * [scheduledTo] fill an unseen end from the callsign's published route, only where the flown path agrees with it.
  */
 data class PastFlight(
     val callsign: String?,
@@ -35,6 +36,8 @@ data class PastFlight(
     val arrivedSeen: Boolean = true,
     /** Where this plane's trace for each day of the flight sits in adsb.lol's daily release ("YYYYMMDD.N.aa.offset.size"). */
     val traces: List<String> = emptyList(),
+    val scheduledFrom: String? = null,
+    val scheduledTo: String? = null,
 )
 
 /** Figures from a past flight's path. Top speed ignores impossible reports and the fastest 1%, where glitches show. */
@@ -123,7 +126,9 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
     companion object {
         private const val CACHE_MS = 10 * 60_000L
         private const val PAST_CACHE_MS = 60 * 60_000L // the files change once a day
-        private const val PAST_URL = "https://ratterau.github.io/Contrail/h/"
+        /** This repo's GitHub Pages: past flights in h/, routes seen by callsign in r/. */
+        const val SITE = "https://ratterau.github.io/Contrail/"
+        private const val PAST_URL = "${SITE}h/"
 
         /** "YYYYMMDD.N.aa.offset.size" to that part's download URL on adsb.lol's globe_history release. */
         fun traceUrl(ref: String): String? {
@@ -155,7 +160,21 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
 
         /** The part of a day's (or two days') trace that is this flight: from 10 min before it was first seen to 10 min after. */
         fun slice(pts: List<TrailPoint>, f: PastFlight): List<TrailPoint> =
-            pts.filter { it.time in f.departed - 600_000..f.arrived + 600_000 }.sortedBy { it.time }
+            smooth(pts.filter { it.time in f.departed - 600_000..f.arrived + 600_000 }.sortedBy { it.time })
+
+        /**
+         * A single glitched report (an altitude thousands of feet off, a speed spike) takes the median of its
+         * neighbours: altitude over three airborne points, ground speed over five.
+         */
+        fun smooth(pts: List<TrailPoint>): List<TrailPoint> = pts.mapIndexed { i, p ->
+            if (p.onGround) return@mapIndexed p
+            val alts = (i - 1..i + 1).mapNotNull { j -> pts.getOrNull(j)?.takeIf { !it.onGround }?.alt }
+            val speeds = (i - 2..i + 2).mapNotNull { j -> pts.getOrNull(j)?.gs }
+            p.copy(
+                alt = if (p.alt != null && alts.size == 3) alts.sorted()[1] else p.alt,
+                gs = if (p.gs != null && speeds.size >= 3) speeds.sorted()[speeds.size / 2] else p.gs,
+            )
+        }
 
         fun stats(pts: List<TrailPoint>): PastStats {
             val air = pts.filter { !it.onGround }
@@ -168,7 +187,10 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
             )
         }
 
-        /** Lines are `hex  callsign  from  departed  to  arrived  traces`, tab-separated, times in unix minutes, "~" if not seen. */
+        /**
+         * Lines are `hex  callsign  from  departed  to  arrived  traces  scheduled-from  scheduled-to`, tab-separated,
+         * times in unix minutes, "~" if not seen. Older files stop after traces.
+         */
         fun parsePastFlights(text: String, hex: String): List<PastFlight> = text.lineSequence()
             .filter { it.startsWith(hex) }
             .mapNotNull { line ->
@@ -176,7 +198,8 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
                 if (c.size < 6 || c[0] != hex) return@mapNotNull null
                 PastFlight(c[1].ifEmpty { null }, c[2].ifEmpty { null }, (c[3].removePrefix("~").toLongOrNull() ?: return@mapNotNull null) * 60_000,
                     c[4].ifEmpty { null }, (c[5].removePrefix("~").toLongOrNull() ?: return@mapNotNull null) * 60_000,
-                    !c[3].startsWith('~'), !c[5].startsWith('~'), c.getOrNull(6)?.split(' ')?.filter { it.isNotEmpty() }.orEmpty())
+                    !c[3].startsWith('~'), !c[5].startsWith('~'), c.getOrNull(6)?.split(' ')?.filter { it.isNotEmpty() }.orEmpty(),
+                    c.getOrNull(7)?.ifEmpty { null }, c.getOrNull(8)?.ifEmpty { null })
             }
             .sortedByDescending { it.departed }
             .toList()

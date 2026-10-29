@@ -75,26 +75,30 @@ final class AppModel {
 
     private(set) var selection: Selection?
     /// Route, photos and registry info for the selected plane.
-    /// A past flight opened from the sheet; `path` is nil while downloading and empty if it wasn't recorded.
+    /// A past flight opened from the sheet; `path` is nil while downloading and empty if it wasn't recorded. `all` is
+    /// the plane's whole list, for stepping to the flight before or after.
     struct PastView: Equatable {
         var flight: PastFlight
         var path: [TrailPoint]?
         var failed = false
+        var all: [PastFlight] = []
     }
     /// Drawn on the map in place of the live trail and route, framed once when its path arrives.
     private(set) var pastView: PastView?
     @ObservationIgnored private var pastTask: Task<Void, Never>?
 
-    func openPast(_ f: PastFlight) {
+    func openPast(_ f: PastFlight, all: [PastFlight]? = nil) {
         pastTask?.cancel()
         following = false
         scrub = nil
-        pastView = PastView(flight: f)
+        replay = nil
+        let all = all ?? pastView?.all ?? []
+        pastView = PastView(flight: f, all: all)
         map.selectionChanged()
         pastTask = Task {
             let path = await history.path(f)
             guard !Task.isCancelled, pastView?.flight == f else { return }
-            pastView = PastView(flight: f, path: path ?? [], failed: path == nil)
+            pastView = PastView(flight: f, path: path ?? [], failed: path == nil, all: all)
             map.pastLoaded()
         }
     }
@@ -104,7 +108,14 @@ final class AppModel {
         pastTask?.cancel()
         pastView = nil
         scrub = nil
+        replay = nil
         map.selectionChanged()
+    }
+
+    /// Where a past flight's replay has the plane. Set up to 30 times a second, so it goes straight to the map
+    /// rather than through SwiftUI.
+    @ObservationIgnored var replay: Replay.Frame? {
+        didSet { if replay != oldValue { map.renderReplay() } }
     }
 
     private(set) var details: Enrichment?
@@ -176,6 +187,7 @@ final class AppModel {
         pastTask?.cancel()
         pastView = nil
         scrub = nil
+        replay = nil
         details = nil
         following = false
         if case .airport(let a) = s {
@@ -256,6 +268,15 @@ final class AppModel {
         details = e
         detailsLoading = false
         map.selectionChanged()
+        // A source was down (the answer wasn't cached): ask again while the plane stays selected.
+        for wait in [30, 90] {
+            guard await enrichment.cached(hex, callsign) == nil else { return }
+            do { try await Task.sleep(for: .seconds(wait)) } catch { return }
+            let again = await enrichment.lookup(hex, callsign)
+            guard selectedHex == hex, tracks[hex]?.aircraft.callsign == callsign else { return }
+            details = again
+            map.selectionChanged()
+        }
     }
 
     private func showPartial(_ hex: String, _ e: Enrichment) {

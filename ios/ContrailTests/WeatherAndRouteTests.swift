@@ -60,6 +60,62 @@ struct PastFlightTests {
         #expect(list[1].arrivedSeen)
         #expect(list[1].departed == 100 * 60_000)
     }
+
+    @Test func scheduledEndsAreKeptApartFromSeenOnes() throws {
+        let f = try #require(FlightHistory.parsePastFlights("7c6d97\tVOZ1361\t\t~29884000\tYMML\t29884051\tref\tYMLT\t\n", hex: "7c6d97").first)
+        #expect(f.from == nil && f.scheduledFrom == "YMLT" && f.scheduledTo == nil && !f.departedSeen)
+    }
+}
+
+struct SeenRouteTests {
+    @Test func mostFlownFirstUnknownAirportsSkipped() {
+        let table = ["YPAD": adl, "YSSY": syd, "YMML": mel]
+        let text = "QFA1\tYPAD\tYMML\t3\nQFA1\tYSSY\tYPAD\t9\nQFA1\tYSSY\tXXXX\t4\nQFA10\tYMML\tYSSY\t5\n"
+        let seen = EnrichmentService.parseSeenRoutes(text, callsign: "QFA1", airline: nil) { table[$0] }
+        #expect(seen.map { "\($0.origin.code)-\($0.destination.code)" } == ["SYD-ADL", "ADL-MEL"])
+    }
+}
+
+struct MakerTests {
+    @Test func makersAreNamedAsPeopleSayThem() {
+        #expect(AircraftInfo.shortMaker("Embraer - Empresa Brasileira De Aeronautica S.a.") == "Embraer")
+        #expect(AircraftInfo.shortMaker("Piper Aircraft, Inc.") == "Piper")
+        #expect(AircraftInfo.shortMaker("Diamond Aircraft Industries Inc.") == "Diamond")
+        #expect(AircraftInfo.shortMaker("Boeing Company") == "Boeing")
+        #expect(AircraftInfo.shortMaker("Airbus Helicopters") == "Airbus Helicopters")
+        #expect(AircraftInfo(registration: nil, manufacturer: "Avions de Transport Regional", type: "ATR 72 500", icaoType: nil, owner: nil, ownerCountry: nil).fullName == "ATR 72 500")
+    }
+}
+
+struct ReplayTests {
+    func p(_ t: Millis, _ lat: Double, _ lon: Double, alt: Int? = 10_000, gs: Double? = 300, ground: Bool = false) -> TrailPoint {
+        TrailPoint(lat: lat, lon: lon, alt: alt, onGround: ground, gs: gs, time: t)
+    }
+
+    @Test func interpolatesBetweenFixes() throws {
+        let f = try #require(Replay.at([p(0, 0, 0, alt: 0, gs: 100), p(60_000, 0, 1, alt: 6_000, gs: 300)], 30_000))
+        #expect(abs(f.lon - 0.5) < 1e-9 && f.alt == 3_000 && abs(f.gs! - 200) < 1e-9)
+        #expect(abs(f.heading - 90) < 0.5 && !f.gap)
+    }
+
+    @Test func clampsAndNeedsTwoPoints() {
+        let path = [p(1_000, 0, 0), p(2_000, 1, 0)]
+        #expect(Replay.at(path, 0)?.time == 1_000)
+        #expect(Replay.at(path, 9_999)?.lat == 1)
+        #expect(Replay.at(Array(path.prefix(1)), 1_000) == nil)
+    }
+
+    @Test func crossesTheDatelineAndFlagsGaps() throws {
+        let f = try #require(Replay.at([p(0, -20, 179), p(60_000, -20, -179)], 30_000))
+        #expect(abs(abs(f.lon) - 180) < 0.1 && abs(f.heading - 90) < 1)
+        #expect(Replay.at([p(0, -34, 138), p(Replay.gapMs + 60_000, -30, 140)], 120_000)?.gap == true)
+    }
+
+    @Test func headingIgnoresJitterOnTheGround() throws {
+        let path = [p(0, -35, 138, ground: true), p(30_000, -34.99, 138, ground: true), p(40_000, -34.98999, 137.99999, ground: true)]
+        let h = try #require(Replay.at(path, 35_000)).heading
+        #expect(h < 1 || h > 359)
+    }
 }
 
 struct WeatherLayerTests {

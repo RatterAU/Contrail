@@ -19,8 +19,10 @@
 		207E379DA19E9DE3B9B39966 /* MiscTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 586DC1744D1D938122C6709E /* MiscTests.swift */; };
 		28FAD6CDCF6699052AFA6152 /* SearchQuery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D092ED91B3ACED62F3B1D0A /* SearchQuery.swift */; };
 		2C07F67913D116EB7812AB58 /* Weather.swift in Sources */ = {isa = PBXBuildFile; fileRef = 736C752270B24122FEDF2296 /* Weather.swift */; };
+		2E155B06CDB473E5D61BCD15 /* PastFlights.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA60A0AD612894CA3CADD1B /* PastFlights.swift */; };
 		3C41BB7F566422762E349B52 /* PromoClips.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C39776593733890F4004D38 /* PromoClips.swift */; };
 		3F288CC217AAEF869F5F0FD2 /* Enrichment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4830858C6168D970006293BA /* Enrichment.swift */; };
+		4148A1B041423C6AFA0B5A6A /* Replay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93622D394E5F4AF374AE04AB /* Replay.swift */; };
 		439F675390256F26BBF809D1 /* AircraftSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2081AE5A5BEC9BC341C15AC1 /* AircraftSheet.swift */; };
 		576ED225702577C7A3F5EF90 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFA0F75EDA6AB40FBDF7AB65 /* Components.swift */; };
 		5A6DEB5DE12EDA22D259C58E /* ContrailApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF4DCC2625A451EB1BD57E09 /* ContrailApp.swift */; };
@@ -36,6 +38,7 @@
 		8F65FD7EB7D57614B94F70CE /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 998E3C80BAE505552B22A2F5 /* Settings.swift */; };
 		91920CF01E05C21662ECA14E /* Geo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E9A89136E3089E8419793C /* Geo.swift */; };
 		986BCF1CBAD72A68C30A2B9C /* SkyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE45C5BC8834FB45CAD0839C /* SkyView.swift */; };
+		A72DCCCCB29B06D512D512F1 /* PastTour.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F54B52F7F0A2F1323ED4927 /* PastTour.swift */; };
 		AE46D9E40E8CE7C5C5F1D6CB /* WeatherAndRouteTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1721EC83D8B180F76B785F6E /* WeatherAndRouteTests.swift */; };
 		B7531D3ACA4FA342663E1B11 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 548DA766E4FD3ECF38D81DFF /* AppModel.swift */; };
 		B9508D84FFEF4927A0CB9861 /* AircraftStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47BFF1D7A2236A7BE5B68AB9 /* AircraftStyle.swift */; };
@@ -79,6 +82,7 @@
 		1721EC83D8B180F76B785F6E /* WeatherAndRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeatherAndRouteTests.swift; sourceTree = "<group>"; };
 		18D14E3C3064D97584205771 /* Track.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Track.swift; sourceTree = "<group>"; };
 		1B4ADD29F9E4CF9537399A85 /* Feeds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Feeds.swift; sourceTree = "<group>"; };
+		1F54B52F7F0A2F1323ED4927 /* PastTour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastTour.swift; sourceTree = "<group>"; };
 		2081AE5A5BEC9BC341C15AC1 /* AircraftSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AircraftSheet.swift; sourceTree = "<group>"; };
 		20B0417C52FFECFCB59823A6 /* ContrailUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ContrailUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		29E9A89136E3089E8419793C /* Geo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Geo.swift; sourceTree = "<group>"; };
@@ -109,11 +113,13 @@
 		81A1095F422BE887E7F0640B /* FeedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedTests.swift; sourceTree = "<group>"; };
 		8543BE6551C8018C1DF4F1E0 /* AirportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirportSheet.swift; sourceTree = "<group>"; };
 		88A36DF63C3CAE155CE4B0F6 /* FlightTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightTests.swift; sourceTree = "<group>"; };
+		93622D394E5F4AF374AE04AB /* Replay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Replay.swift; sourceTree = "<group>"; };
 		998E3C80BAE505552B22A2F5 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		A8829F88D08D78D0FB92D9F4 /* ReadmeShots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadmeShots.swift; sourceTree = "<group>"; };
 		AD1F5FB56CA9F061E7C769E7 /* MainSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainSheet.swift; sourceTree = "<group>"; };
 		AF4DCC2625A451EB1BD57E09 /* ContrailApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContrailApp.swift; sourceTree = "<group>"; };
 		B6D02EBD3CB4C804C6492F0D /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		BDA60A0AD612894CA3CADD1B /* PastFlights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastFlights.swift; sourceTree = "<group>"; };
 		C5B451EECB593E05BF647B4F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		C9DAD8F2D51C6BC3100E5143 /* MapCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapCoordinator.swift; sourceTree = "<group>"; };
 		D57FBF0910E9DAA9AD870E39 /* ContrailTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ContrailTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -129,6 +135,7 @@
 		18AA1A512B9947AEF09184AD /* ContrailUITests */ = {
 			isa = PBXGroup;
 			children = (
+				1F54B52F7F0A2F1323ED4927 /* PastTour.swift */,
 				4C39776593733890F4004D38 /* PromoClips.swift */,
 				A8829F88D08D78D0FB92D9F4 /* ReadmeShots.swift */,
 				7F8F81655AF056C40EEE8153 /* RouteShots.swift */,
@@ -186,6 +193,7 @@
 				AD1F5FB56CA9F061E7C769E7 /* MainSheet.swift */,
 				3E03718CE8F8A19206EF8928 /* NearbyView.swift */,
 				44DFDD497A682D1800FDDF16 /* Panels.swift */,
+				BDA60A0AD612894CA3CADD1B /* PastFlights.swift */,
 				2EC1A113EA309100AA209AD0 /* RootView.swift */,
 				EE45C5BC8834FB45CAD0839C /* SkyView.swift */,
 				F2DBF86C86B763DCA893D841 /* WindLayer.swift */,
@@ -266,6 +274,7 @@
 				0A22F94E6C229CF99CF59BD3 /* FlightProgress.swift */,
 				29E9A89136E3089E8419793C /* Geo.swift */,
 				B6D02EBD3CB4C804C6492F0D /* Models.swift */,
+				93622D394E5F4AF374AE04AB /* Replay.swift */,
 				3D092ED91B3ACED62F3B1D0A /* SearchQuery.swift */,
 				7EA77DCEB0733EE20A1F3525 /* SkyGeometry.swift */,
 				18D14E3C3064D97584205771 /* Track.swift */,
@@ -414,6 +423,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A72DCCCCB29B06D512D512F1 /* PastTour.swift in Sources */,
 				3C41BB7F566422762E349B52 /* PromoClips.swift in Sources */,
 				0FDEC2BAC3B1636036A3AB16 /* ReadmeShots.swift in Sources */,
 				1986E64219A407DEAA9BD347 /* RouteShots.swift in Sources */,
@@ -460,7 +470,9 @@
 				102C83E6915ACAEE1EFA68D7 /* Models.swift in Sources */,
 				CEDE3C67A1F110DA20AE9AEA /* NearbyView.swift in Sources */,
 				1EE18FF914BE0DBF1A058F0D /* Panels.swift in Sources */,
+				2E155B06CDB473E5D61BCD15 /* PastFlights.swift in Sources */,
 				E64B31C28A969BA4B1F185E6 /* Readsb.swift in Sources */,
+				4148A1B041423C6AFA0B5A6A /* Replay.swift in Sources */,
 				F8617EBA8C34FCA577F69A87 /* RootView.swift in Sources */,
 				28FAD6CDCF6699052AFA6152 /* SearchQuery.swift in Sources */,
 				8F65FD7EB7D57614B94F70CE /* Settings.swift in Sources */,

@@ -73,6 +73,8 @@ final class PlaneView: MKAnnotationView {
         var stale: Bool
         var logo: UIImage?
         var spoken: String
+        /// Faded back while a past flight is shown, so its path and replayed plane stand out.
+        var dimmed = false
     }
 
     private var look: Look?
@@ -82,7 +84,7 @@ final class PlaneView: MKAnnotationView {
         look = l
         icon.image = Sprites.image(l.shape, band: l.selected ? AltitudeColors.selectedBand : l.band)
         icon.transform = CGAffineTransform(scaleX: l.selected ? 1.3 : 1, y: l.selected ? 1.3 : 1).rotated(by: rotation.isNaN ? 0 : rotation)
-        alpha = l.stale && !l.selected ? 0.35 : 1
+        setFade(l.dimmed ? 0.3 : l.stale && !l.selected ? 0.35 : 1)
         accessibilityLabel = l.spoken
         label.text = l.label
         label.isHidden = l.label == nil
@@ -99,6 +101,11 @@ final class PlaneView: MKAnnotationView {
         } else {
             badge.isHidden = true
         }
+    }
+
+    /// On the subviews: MapKit manages the annotation view's own alpha (fading views in and out) and overrides it.
+    func setFade(_ a: CGFloat) {
+        for v in [icon, label, badge] { v.alpha = a }
     }
 
     /// Track relative to the map's own rotation.
@@ -164,6 +171,18 @@ final class AirportView: MKAnnotationView {
         zPriority = a.isEndpoint ? .max : .min
         displayPriority = a.isEndpoint ? .required : ap.size == "L" ? .defaultHigh : ap.size == "M" ? MKFeatureDisplayPriority(500) : .defaultLow
         collisionMode = .rectangle
+    }
+}
+
+/// A past flight's plane where its replay has got to.
+final class ReplayAnnotation: NSObject, MKAnnotation {
+    @objc dynamic var coordinate: CLLocationCoordinate2D
+    var frame: Replay.Frame
+    let shape: Shape
+    init(_ c: CLLocationCoordinate2D, frame: Replay.Frame, shape: Shape) {
+        coordinate = c
+        self.frame = frame
+        self.shape = shape
     }
 }
 

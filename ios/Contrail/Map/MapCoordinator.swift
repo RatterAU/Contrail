@@ -14,6 +14,7 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
     private var airports: [String: AirportAnnotation] = [:]
     private var endpoints: [AirportAnnotation] = []
     private var scrubPin: ScrubAnnotation?
+    private var replayPlane: ReplayAnnotation?
     private var trailLines: [StyledLines] = []
     private var tailLine: StyledLines?
     private var routeLines: [StyledLines] = []
@@ -255,7 +256,7 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
         v.apply(PlaneView.Look(shape: shape, band: AltitudeColors.band(a), selected: selected,
                                label: prefs.labels && zoom >= 7 ? a.callsign ?? a.registration : nil,
                                stale: t.staleness(now) > TrafficStore.fadeAfterMs, logo: logo,
-                               spoken: "\(a.label), \(Fmt.current.altitude(a))"))
+                               spoken: "\(a.label), \(Fmt.current.altitude(a))", dimmed: model.pastView != nil))
         v.setRotation(a.track.map { $0 - heading }, rotates: shape.rotates)
         // Higher planes draw over lower ones; the selected plane over everything.
         v.zPriority = selected ? .max : MKAnnotationViewZPriority(rawValue: Float(min(a.altBaro ?? 0, 60_000)) / 60_000 * 0.9)
@@ -357,6 +358,30 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
             endpoints = [AirportAnnotation(shown.origin, endpoint: true), AirportAnnotation(shown.destination, endpoint: true)]
             mapView.addAnnotations(endpoints)
         }
+    }
+
+    /// A past flight's replay: the plane itself, as the selected plane's silhouette, faded across a coverage gap.
+    func renderReplay() {
+        guard let f = model.replay, let hex = model.selectedHex, let t = model.tracks[hex] else {
+            if let p = replayPlane { mapView.removeAnnotation(p); replayPlane = nil }
+            return
+        }
+        let c = CLLocationCoordinate2D(latitude: f.lat, longitude: f.lon)
+        if let p = replayPlane {
+            p.coordinate = c
+            p.frame = f
+        } else {
+            replayPlane = ReplayAnnotation(c, frame: f, shape: Shape.of(t.aircraft))
+            mapView.addAnnotation(replayPlane!)
+        }
+        if let v = mapView.view(for: replayPlane!) as? PlaneView { styleReplay(v, replayPlane!) }
+    }
+
+    private func styleReplay(_ v: PlaneView, _ p: ReplayAnnotation) {
+        v.apply(PlaneView.Look(shape: p.shape, band: AltitudeColors.selectedBand, selected: true, label: nil, stale: false, logo: nil, spoken: "Replay"))
+        v.setRotation(p.frame.heading - mapView.camera.heading, rotates: p.shape.rotates)
+        v.setFade(p.frame.gap ? 0.5 : 1)
+        v.zPriority = .max
     }
 
     private func renderScrub() {
@@ -543,6 +568,10 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
             v.isUserInteractionEnabled = false
             v.zPriority = .min
             v.displayPriority = .defaultLow
+            return v
+        case let r as ReplayAnnotation:
+            let v = PlaneView(annotation: r, reuseIdentifier: nil)
+            styleReplay(v, r)
             return v
         case is ScrubAnnotation:
             let v = MKAnnotationView(annotation: annotation, reuseIdentifier: nil)

@@ -54,6 +54,14 @@ class HistoryTest {
         assertEquals(100 * 60_000L, list[1].departed)
     }
 
+    @Test fun scheduledEndsAreKeptApartFromSeenOnes() {
+        val f = FlightHistory.parsePastFlights("7c6d97\tVOZ1361\t\t~29884000\tYMML\t29884051\tref\tYMLT\t\n", "7c6d97").single()
+        assertNull(f.from)
+        assertEquals("YMLT", f.scheduledFrom)
+        assertNull(f.scheduledTo)
+        assertEquals(false, f.departedSeen)
+    }
+
     @Test fun pastFlightPathFromAdsbLolTrace() {
         val f = FlightHistory.parsePastFlights("7c6d97\tQFA683\tYMML\t29884000\tYPAD\t29884051\t20261026.0.ab.1500.120 20261027.0.aa.9.8\n", "7c6d97").single()
         assertEquals(listOf("20261026.0.ab.1500.120", "20261027.0.aa.9.8"), f.traces)

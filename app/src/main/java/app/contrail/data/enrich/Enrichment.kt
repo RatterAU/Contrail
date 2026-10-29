@@ -8,7 +8,9 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.encodeURLPathPart
 import io.ktor.http.isSuccess
+import app.contrail.data.feed.FlightHistory
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
@@ -49,7 +51,22 @@ data class AircraftInfo(
     val owner: String?,
     val ownerCountry: String?,
 ) {
-    val fullName get() = listOfNotNull(manufacturer, type).joinToString(" ").ifEmpty { null }
+    val fullName get() = listOfNotNull(manufacturer?.let(::shortMaker)?.takeUnless { type?.startsWith(it, ignoreCase = true) == true }, type)
+        .joinToString(" ").ifEmpty { null }
+}
+
+/**
+ * The registry's manufacturer as people say it: "Embraer - Empresa Brasileira De Aeronautica S.a." is Embraer,
+ * "Piper Aircraft, Inc." is Piper, "Avions de Transport Regional" is ATR.
+ */
+fun shortMaker(name: String): String {
+    var s = name.substringBefore(" - ").trim()
+    if (s.equals("Avions de Transport Regional", ignoreCase = true)) return "ATR"
+    while (true) {
+        val t = s.replace(Regex("""(,?\s+(Inc\.?|Corp\.?|Corporation|Company|Industries|Aircraft|S\.a\.|GmbH|Ltd\.?))$""", RegexOption.IGNORE_CASE), "")
+        if (t == s || t.isEmpty()) return s
+        s = t
+    }
 }
 
 data class Photo(val thumbUrl: String, val fullUrl: String, val photographer: String?, val pageUrl: String?, val site: String)
@@ -75,24 +92,43 @@ class EnrichmentRepository(private val http: HttpClient) {
         cached(hex, callsign)?.let { return it }
         return mutex.withLock {
             cached(hex, callsign) ?: coroutineScope {
-                val adsbdb = async { safe { adsbdb(hex, callsign) } }
+                val adsbdb = async { retrying { adsbdb(hex, callsign) } }
                 val photos = async { safe { airportDataPhotos(hex) }.orEmpty() }
-                val legs = async { callsign?.let { safe { adsbLolLegs(it) } }.orEmpty() }
-                val (info, listed, fallbackPhoto) = adsbdb.await() ?: Triple(null, null, null)
+                val legs = async { if (callsign == null) emptyList() else retrying { adsbLolLegs(callsign) } }
+                val seen = async { callsign?.let { safe { seenRoutes(it) } }.orEmpty() }
+                val db = adsbdb.await()
+                val (info, listed, fallbackPhoto) = db ?: Triple(null, null, null)
                 // adsbdb rejects the whole request when it doesn't know the airframe (VOZ092's 7cad46), route included.
-                val route = listed ?: callsign?.let { routeFor(it) }
+                var routeFailed = false
+                val route = listed ?: callsign?.let { cs -> retrying { routeOrThrow(cs) }.also { routeFailed = it == null }?.getOrNull() }
                 val pics = photos.await().ifEmpty { listOfNotNull(fallbackPhoto) }
                 if (callsign != null && !legs.isCompleted) partial(Enrichment(info, route, pics, legsPending = true))
-                val e = Enrichment(info, route, pics, legs.await().map {
+                val lol = legs.await()
+                // Routes this callsign was seen flying lately come after the listed ones: published routes go stale.
+                val candidates = lol.orEmpty() + seen.await().filter { r -> lol.orEmpty().none { it.origin.icao == r.origin.icao && it.destination.icao == r.destination.icao } }
+                val e = Enrichment(info, route, pics, candidates.map {
                     it.copy(flightNumber = route?.flightNumber ?: it.flightNumber, airline = route?.airline ?: it.airline)
                 })
-                synchronized(cache) { cache[key(hex, callsign)] = e }
+                // A source that failed (busy, timed out, offline) isn't an answer: left uncached, the next look asks again.
+                if (db != null && lol != null && !routeFailed) synchronized(cache) { cache[key(hex, callsign)] = e }
                 e
             }
         }
     }
 
     private fun key(hex: String, cs: String?) = "$hex|${cs.orEmpty()}"
+
+    /**
+     * [block] up to three times, 2 s then 5 s apart; null if every try failed. adsb.lol answers 429 when the feed
+     * polling has used its share, and adsbdb times out under load.
+     */
+    private suspend fun <T> retrying(block: suspend () -> T): T? {
+        for (wait in longArrayOf(0, 2_000, 5_000)) {
+            delay(wait)
+            safe(block)?.let { return it }
+        }
+        return null
+    }
 
     private suspend fun <T> safe(block: suspend () -> T): T? = try {
         block()
@@ -106,7 +142,8 @@ class EnrichmentRepository(private val http: HttpClient) {
         var res = http.get("https://api.adsbdb.com/v0/aircraft/$hex" + (callsign?.let { "?callsign=${it.encodeURLPathPart()}" } ?: ""))
         // adsbdb 404s the whole request when only the callsign is unknown; retry for the aircraft alone.
         if (res.status == HttpStatusCode.NotFound && callsign != null) res = http.get("https://api.adsbdb.com/v0/aircraft/$hex")
-        if (!res.status.isSuccess()) return Triple(null, null, null)
+        if (res.status == HttpStatusCode.NotFound) return Triple(null, null, null) // airframe unknown
+        if (!res.status.isSuccess()) throw java.io.IOException("adsbdb ${res.status.value}")
         val response = feedJson.parseToJsonElement(res.bodyAsText()).jsonObject["response"] as? JsonObject ?: return Triple(null, null, null)
         val ac = response["aircraft"]?.let { feedJson.decodeFromJsonElement<AdsbdbAircraft>(it) }
         val fr = response["flightroute"]?.let { feedJson.decodeFromJsonElement<AdsbdbRoute>(it) }
@@ -117,24 +154,49 @@ class EnrichmentRepository(private val http: HttpClient) {
 
     private val routeCache = HashMap<String, Pair<Route?, Long>>()
 
-    /** Route by callsign alone (for airport boards). Cached 6 h, including "unknown" answers. */
-    suspend fun routeFor(callsign: String): Route? {
+    /** Route by callsign alone (for airport boards). Cached 6 h, including "unknown" answers; errors aren't cached. */
+    suspend fun routeFor(callsign: String): Route? = safe { routeOrThrow(callsign) }?.getOrNull()
+
+    /** Success(null) when adsbdb doesn't know the callsign; throws when it couldn't answer. */
+    private suspend fun routeOrThrow(callsign: String): Result<Route?> {
         val now = System.currentTimeMillis()
-        synchronized(routeCache) { routeCache[callsign]?.takeIf { now - it.second < 6 * 3_600_000 } }?.let { return it.first }
-        val route = safe {
-            val res = http.get("https://api.adsbdb.com/v0/callsign/${callsign.encodeURLPathPart()}")
-            if (res.status == HttpStatusCode.NotFound) return@safe null
+        synchronized(routeCache) { routeCache[callsign]?.takeIf { now - it.second < 6 * 3_600_000 } }?.let { return Result.success(it.first) }
+        val res = http.get("https://api.adsbdb.com/v0/callsign/${callsign.encodeURLPathPart()}")
+        val route = if (res.status == HttpStatusCode.NotFound) null else {
             if (!res.status.isSuccess()) throw java.io.IOException("adsbdb ${res.status.value}")
             val response = feedJson.parseToJsonElement(res.bodyAsText()).jsonObject["response"] as? JsonObject
             response?.get("flightroute")?.let { feedJson.decodeFromJsonElement<AdsbdbRoute>(it).toRoute() }
         }
         synchronized(routeCache) { routeCache[callsign] = route to now }
-        return route
+        return Result.success(route)
     }
 
+    private val seenCache = HashMap<String, Pair<String, Long>>()
+
+    /**
+     * Routes [callsign] was seen flying (both ends) at least twice in the last 14 days, most flown first, from this
+     * repo's daily history (tools/history.py). One file per first four characters, shared by nearby flight numbers.
+     */
+    private suspend fun seenRoutes(callsign: String): List<Route> {
+        if (callsign.length < 4 || !callsign.all { it.isLetterOrDigit() }) return emptyList()
+        val prefix = callsign.take(4)
+        val now = System.currentTimeMillis()
+        val text = synchronized(seenCache) { seenCache[prefix]?.takeIf { now - it.second < 3_600_000 }?.first } ?: run {
+            val res = http.get("${FlightHistory.SITE}r/$prefix.txt")
+            val body = if (res.status == HttpStatusCode.NotFound) "" else if (res.status.isSuccess()) res.bodyAsText() else throw java.io.IOException("${res.status.value}")
+            synchronized(seenCache) { seenCache[prefix] = body to now }
+            body
+        }
+        val static = StaticData.now() ?: return emptyList()
+        return parseSeenRoutes(text, callsign, static.airlineForCallsign(callsign), static::airport)
+    }
+
+    /** Empty when adsb.lol doesn't know the callsign (404); throws when it couldn't answer (429, 5xx, offline). */
     private suspend fun adsbLolLegs(callsign: String): List<Route> {
         val res = http.get("https://api.adsb.lol/api/0/route/${callsign.encodeURLPathPart()}")
-        return if (res.status.isSuccess()) parseAdsbLolLegs(res.bodyAsText()) else emptyList()
+        if (res.status == HttpStatusCode.NotFound) return emptyList()
+        if (!res.status.isSuccess()) throw java.io.IOException("adsb.lol ${res.status.value}")
+        return parseAdsbLolLegs(res.bodyAsText())
     }
 
     private fun AdsbdbRoute.toRoute(): Route? {
@@ -154,6 +216,13 @@ class EnrichmentRepository(private val http: HttpClient) {
         }
     }
 }
+
+/** Lines `callsign  from  to  times-seen`, most flown first; [airport] looks up the bundled table. */
+fun parseSeenRoutes(text: String, callsign: String, airline: Airline?, airport: (String) -> Airport?): List<Route> =
+    text.lineSequence().map { it.split('\t') }.filter { it.size >= 4 && it[0] == callsign }
+        .sortedByDescending { it[3].toIntOrNull() ?: 0 }
+        .mapNotNull { c -> Route(callsign, null, airline, airport(c[1]) ?: return@mapNotNull null, airport(c[2]) ?: return@mapNotNull null) }
+        .toList()
 
 /** adsb.lol `/api/0/route/{callsign}`: its `_airports` in flight order, as one route per leg. */
 fun parseAdsbLolLegs(json: String): List<Route> {

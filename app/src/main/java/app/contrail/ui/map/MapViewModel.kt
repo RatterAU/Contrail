@@ -8,6 +8,7 @@ import app.contrail.data.enrich.Airport
 import app.contrail.data.enrich.Enrichment
 import app.contrail.data.feed.FeedsUnavailableException
 import app.contrail.data.feed.PastFlight
+import app.contrail.domain.Replay
 import app.contrail.data.static.Runway
 import app.contrail.data.static.StaticData
 import app.contrail.data.weather.Metar
@@ -147,8 +148,11 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
     /** Point on the selected plane's trail being inspected in the profile chart. */
     val scrub = MutableStateFlow<TrailPoint?>(null)
 
+    /** Where a past flight's replay has the plane, drawn on the map as the plane itself. */
+    val replay = MutableStateFlow<Replay.Frame?>(null)
+
     /** Emits whenever the map needs redrawing before its next paced frame: new data, a selection, settings or a camera stop. */
-    val redraw: Flow<Any?> get() = merge(tracks.drop(1), _selected.drop(1), prefs.drop(1), scrub.drop(1), enrichment.drop(1), viewport.drop(1), past.drop(1))
+    val redraw: Flow<Any?> get() = merge(tracks.drop(1), _selected.drop(1), prefs.drop(1), scrub.drop(1), enrichment.drop(1), viewport.drop(1), past.drop(1), replay.drop(1))
 
     /** Route, photos and registry info for the selected plane; re-fetched if its callsign changes. */
     val enrichment: StateFlow<Enrichment?> = combine(_selected, tracks) { hex, all -> hex?.let { it to all[it]?.aircraft?.callsign } }
@@ -158,6 +162,12 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
             val (hex, cs) = key
             emit(c.enrichment.cached(hex, cs))
             emit(c.enrichment.lookup(hex, cs) { emit(it) })
+            // A source was down (the answer wasn't cached): ask again while the plane stays selected.
+            for (wait in longArrayOf(30_000, 90_000)) {
+                if (c.enrichment.cached(hex, cs) != null) break
+                delay(wait)
+                emit(c.enrichment.lookup(hex, cs))
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
@@ -190,18 +200,22 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
         viewport.value = v
     }
 
-    /** A past flight opened from the sheet; [path] is null while downloading and empty if it wasn't recorded. */
-    data class PastView(val hex: String, val flight: PastFlight, val path: List<TrailPoint>?, val failed: Boolean = false)
+    /**
+     * A past flight opened from the sheet; [path] is null while downloading and empty if it wasn't recorded. [all] is
+     * the plane's whole list, for stepping to the flight before or after.
+     */
+    data class PastView(val hex: String, val flight: PastFlight, val path: List<TrailPoint>?, val failed: Boolean = false, val all: List<PastFlight> = emptyList())
 
     /** Shown on the map in place of the live trail, framed once when its path arrives. */
     val past = MutableStateFlow<PastView?>(null)
     private var pastJob: kotlinx.coroutines.Job? = null
 
-    fun openPast(hex: String, f: PastFlight) {
+    fun openPast(hex: String, f: PastFlight, all: List<PastFlight> = past.value?.all.orEmpty()) {
         pastJob?.cancel()
         _following.value = false
         scrub.value = null
-        past.value = PastView(hex, f, null)
+        replay.value = null
+        past.value = PastView(hex, f, null, all = all)
         pastJob = viewModelScope.launch {
             val path = c.history.path(f)
             past.update { v -> if (v?.flight == f) v.copy(path = path.orEmpty(), failed = path == null) else v }
@@ -212,6 +226,7 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
         pastJob?.cancel()
         past.value = null
         scrub.value = null
+        replay.value = null
     }
 
     fun select(hex: String?) {
