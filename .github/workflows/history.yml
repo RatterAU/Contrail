@@ -1,12 +1,17 @@
-# Past flights for the app (tools/history.py): once a day, turn adsb.lol's openly licensed history dump for
-# yesterday into small per-aircraft shards on GitHub Pages. Nothing is committed: earlier days are carried over
-# from the live site. One run a day, about 6 minutes; any of the last 14 days still missing (a late dump, or the
-# first run) are filled in the same run, about 6 minutes each.
+# Past flights for the app (tools/history.py): turn adsb.lol's openly licensed history dump for yesterday into small
+# per-aircraft shards on GitHub Pages. Nothing is committed: earlier days are carried over from the live site. adsb.lol
+# publishes one dump a day, around 03:30 UTC, and GitHub starts scheduled runs late (hours, at busy times), so several
+# runs are queued: the first to find the new dump processes it (about 6 minutes), the rest find nothing new and stop
+# without deploying. Any of the last 14 days still missing (a late dump, or the first run) are filled in the same run.
 name: Past flights
 
 on:
   schedule:
-    - cron: "23 7 * * *" # adsb.lol publishes yesterday's dump around 03:30 UTC
+    - cron: "47 3 * * *"
+    - cron: "17 5 * * *"
+    - cron: "23 7 * * *"
+    - cron: "41 11 * * *"
+    - cron: "13 17 * * *"
   workflow_dispatch:
     inputs:
       rebuild:
@@ -38,9 +43,17 @@ jobs:
             app/src/main/assets/airports.tsv
           sparse-checkout-cone-mode: false
 
+      # Published routes by callsign (VRS standing-data, CC0), for ends the plane wasn't seen at; only the routes folder.
+      - name: Routes
+        run: |
+          git clone -q --depth 1 --filter=blob:none --sparse https://github.com/vradarserver/standing-data.git vrs
+          git -C vrs sparse-checkout set routes
+
       - name: Build
+        id: build
         env:
           GH_TOKEN: ${{ github.token }}
+          ROUTES: vrs/routes
         run: |
           set -euo pipefail
           python3 tools/history.py test
@@ -53,6 +66,7 @@ jobs:
             done
           fi
           # Every day of the last 14 not yet processed, oldest first.
+          new=0
           for i in $(seq 14 -1 1); do
             day=$(date -u -d "-$i day" +%F)
             [ -f "site/d/$day.tsv.gz" ] && continue
@@ -66,16 +80,20 @@ jobs:
             for part in $(echo "$parts" | cut -d: -f1); do
               curl -fsSL "https://github.com/$repo/releases/download/$tag/$part"
             done | python3 tools/history.py legs "$(date -u -d "$day" +%s)" "site/d/$day.tsv.gz" "$tag" "$(echo "$parts" | paste -sd, -)" \
-              || { rm -f "site/d/$day.tsv.gz"; echo "::warning::$day failed, will retry next run"; }
+              && new=1 || { rm -f "site/d/$day.tsv.gz"; echo "::warning::$day failed, will retry next run"; }
           done
+          echo "deploy=$new" >> "$GITHUB_OUTPUT"
+          [ "$new" = 1 ] || { echo "Nothing new"; exit 0; }
           ls site/d | sort | head -n -14 | sed 's|^|site/d/|' | xargs -r rm
           python3 tools/history.py shards site/d site
           touch site/.nojekyll
           du -sh site
 
-      - uses: actions/upload-pages-artifact@v3
+      - if: steps.build.outputs.deploy == '1'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
       - id: deploy
+        if: steps.build.outputs.deploy == '1'
         uses: actions/deploy-pages@v4
