@@ -303,6 +303,18 @@ def stale_dropped(rows_by_hex):
             rows[i] = r[:6] + (sdep, sarr)
 
 
+def callsign_routes(flights):
+    """Routes each callsign was seen flying, both ends seen, at least twice in the window: {callsign: [(from, to, n)]},
+    most flown first. Published routes go stale (QLK1984 listed Williamtown-Brisbane, flying Adelaide-Brisbane); the
+    apps offer these as candidates and show one only when the live plane's position fits it. `flights` are merged rows."""
+    seen = defaultdict(lambda: defaultdict(int))
+    for r in flights:
+        if r[0] and r[1] and r[3] and r[1] != r[3]:
+            seen[r[0]][(r[1], r[3])] += 1
+    return {cs: sorted(((a, b, n) for (a, b), n in pairs.items() if n >= 2), key=lambda x: -x[2])
+            for cs, pairs in seen.items() if any(n >= 2 for n in pairs.values())}
+
+
 def cmd_shards(days_dir, site_dir):
     files = sorted(f for f in os.listdir(days_dir) if f.endswith(".tsv.gz"))[-DAYS:]
     by_hex = defaultdict(list)
@@ -314,15 +326,26 @@ def cmd_shards(days_dir, site_dir):
     stale_dropped(by_hex)
     days = {(datetime.date.fromisoformat(f[:10]) - datetime.date(1970, 1, 1)).days for f in files}
     shards = defaultdict(list)
+    flights = []
     for h, rows in by_hex.items():
         for r in incomplete_dropped(merge(sorted(rows, key=lambda r: minutes(r[2]))), days):
             # hex callsign from departed to arrived traces scheduled-from scheduled-to
             shards[h[:4]].append("\t".join((h, *r)) + "\n")
+            flights.append(r)
+    # Seen routes by callsign, one file per first four characters (site/r/QLK1.txt): callsign from to times-seen.
+    by_prefix = defaultdict(list)
+    for cs, routes in callsign_routes(flights).items():
+        if cs.isalnum():
+            by_prefix[cs[:4]] += [f"{cs}\t{a}\t{b}\t{n}\n" for a, b, n in routes]
+    os.makedirs(os.path.join(site_dir, "r"), exist_ok=True)
+    for k, lines in by_prefix.items():
+        with open(os.path.join(site_dir, "r", k + ".txt"), "w", encoding="utf-8") as fh:
+            fh.writelines(sorted(lines))
     os.makedirs(os.path.join(site_dir, "h"), exist_ok=True)
     for k, lines in shards.items():
         with open(os.path.join(site_dir, "h", k + ".txt"), "w", encoding="utf-8") as fh:
             fh.writelines(sorted(lines))
-    print(f"{len(files)} days, {len(by_hex)} aircraft, {len(shards)} shards", file=sys.stderr)
+    print(f"{len(files)} days, {len(by_hex)} aircraft, {len(shards)} shards, {len(by_prefix)} route files", file=sys.stderr)
 
 
 if __name__ == "__main__":
@@ -398,6 +421,9 @@ if __name__ == "__main__":
                 "b": [("RYR3WX", "", "~5", "EGGD", "6", "", "LEMU", ""), ("QFA1", "YSSY", "7", "", "~8", "", "", "WSSS")]}
         stale_dropped(rows)
         assert rows["a"][1][6] == "" and rows["b"][0][6] == "LEMU" and rows["b"][1][7] == "WSSS"
+        # Seen routes by callsign: twice or more, most flown first; once is a one-off, and a circuit isn't a route.
+        f = [("QLK1984", "YPAD", "1", "YBBN", "2")] * 3 + [("QLK1984", "YPAD", "", "YBCS", "")] + [("QLK1984", "YSSY", "", "YBBN", "")] * 2 + [("YNK", "YPPF", "", "YPPF", "")] * 5
+        assert callsign_routes(f) == {"QLK1984": [("YPAD", "YBBN", 3), ("YSSY", "YBBN", 2)]}
         # Trace refs: the part holding the bytes, or none when they straddle two parts.
         parts = [("aa", 1000), ("ab", 1000)]
         assert part_ref("v2026.10.26-planes-readsb-prod-0", parts, 1500, 100) == "20261026.0.ab.500.100"

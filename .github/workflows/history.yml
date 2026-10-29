@@ -65,8 +65,8 @@ jobs:
               curl -fsS -o "site/d/$d.tsv.gz" "${site%/}/d/$d.tsv.gz" || rm -f "site/d/$d.tsv.gz"
             done
           fi
-          # Every day of the last 14 not yet processed, oldest first.
-          new=0
+          # Every day of the last 14 not yet processed, oldest first. A run started by hand always republishes.
+          new=${{ github.event_name == 'workflow_dispatch' && 1 || 0 }}
           for i in $(seq 14 -1 1); do
             day=$(date -u -d "-$i day" +%F)
             [ -f "site/d/$day.tsv.gz" ] && continue
