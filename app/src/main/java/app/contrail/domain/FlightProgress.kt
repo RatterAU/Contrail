@@ -42,7 +42,7 @@ object FlightProgressCalc {
             "A3", "A4", "A5", "A6" -> 430.0 // airliners
             else -> 400.0
         }
-        val now = if ((a.altBaro ?: 0) > 20_000) a.groundSpeed else null
+        val now = a.groundSpeed?.takeIf { (a.altBaro ?: 0) > 20_000 && it > 150 } // 0 here would mean an infinite flight
         return now ?: max(typical, a.groundSpeed ?: 0.0)
     }
 
@@ -104,16 +104,27 @@ object FlightProgressCalc {
                 // Adelaide, 280 nm off), so the corridor grows with the distance.
                 val onCorridor = crossTrack <= max(60.0, total * 0.15)
                 val betweenEnds = fromOrigin + toDest <= total * 1.3 + 30
-                // Departure and arrival procedures point planes anywhere near the airports.
-                val headingOk = toDest < 60 || fromOrigin < 60 || a.track == null ||
-                    Geo.angleDiff(a.track, Geo.bearing(lat, lon, d.lat, d.lon)) <= 75
+                val trk = a.track
+                val vr = a.verticalRate ?: 0.0
+                val towardsDest = trk != null && Geo.angleDiff(trk, Geo.bearing(lat, lon, d.lat, d.lon)) <= 75
+                val towardsOrigin = trk != null && Geo.angleDiff(trk, Geo.bearing(lat, lon, o.lat, o.lon)) <= 75
+                // Departure and arrival procedures point planes anywhere near the airports, so there only the opposite
+                // of the route fails: climbing away from the destination (it just left that stop) or descending into
+                // the origin (it's arriving there). Further out it must be pointing at the destination.
+                val headingOk = when {
+                    toDest < 60 && fromOrigin < 60 -> true
+                    toDest < 60 -> vr <= 300 || towardsDest
+                    fromOrigin < 60 -> vr >= -300 || !towardsOrigin
+                    else -> towardsDest
+                }
                 onCorridor && betweenEnds && headingOk
             }
         }
 
         val landedHere = a.onGround && toDest < 5
         val gs = a.groundSpeed
-        val departed = track.takeoffAt
+        // Parked at the origin, a takeoff on record belongs to the flight before.
+        val departed = track.takeoffAt?.takeUnless { a.onGround && fromOrigin < 5 }
         val cruise = cruiseSpeedKt(track)
         // Climb-out mirrors the descent: the same speed profile, flown in reverse.
         val estDeparture = if (departed == null && verified && !a.onGround) now - flyingTimeMs(fromOrigin, cruise) else null

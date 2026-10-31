@@ -1,6 +1,7 @@
 package app.contrail.data.feed
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -8,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 data class SourceHealth(val ok: Boolean, val latencyMs: Long?, val lastError: String?, val checkedAt: Long)
@@ -44,12 +46,21 @@ class FeedScheduler(
         }
         var last: Throwable? = null
         for (source in order) {
-            mutex.withLock { lastCall[source.name] }?.let { prev ->
-                val wait = prev + minIntervalMs - clock()
+            // The slot is claimed before waiting, so concurrent callers queue up instead of all waking together.
+            val slot = mutex.withLock {
+                val at = lastCall[source.name]?.let { maxOf(clock(), it + minIntervalMs) } ?: clock()
+                lastCall[source.name] = at
+                at
+            }
+            val wait = slot - clock()
+            try {
                 if (wait > 0) delay(wait)
+            } catch (e: CancellationException) {
+                // A pan restarts the poll: give the slot back, or repeated pans push every later poll out.
+                withContext(NonCancellable) { mutex.withLock { if (lastCall[source.name] == slot) lastCall[source.name] = slot - minIntervalMs } }
+                throw e
             }
             val started = clock()
-            mutex.withLock { lastCall[source.name] = started }
             try {
                 val result = withTimeout(timeoutMs) { block(source) }
                 record(source.name, SourceHealth(true, clock() - started, null, clock()))

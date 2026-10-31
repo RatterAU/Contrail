@@ -136,13 +136,29 @@ struct TrackTests {
     }
 }
 
+struct TrackMergeTests {
+    let full = #"{"hex":"7c1234","flight":"QFA1","r":"VH-OQA","alt_baro":36000,"gs":450,"track":80,"lat":-34.0,"lon":138.0,"seen":0}"#
+
+    @Test func roughPositionNeverReplacesARealFix() {
+        let rough = one(#"{"hex":"7c1234","rr_lat":-20.0,"rr_lon":130.0,"seen":0}"#, 2_000)
+        #expect(Track.start(one(full, 1_000), now: 1_000).updated(with: rough, now: 2_000).aircraft.lat == -34)
+    }
+
+    @Test func agesComeFromThePhoneClockEvenWhenTheFeedDisagrees() {
+        let ahead: Millis = 1_000_000 + 5 * 60_000
+        #expect(parse("{\"now\":1000000,\"ac\":[\(full)]}", ahead)[0].seenTime == ahead)
+    }
+}
+
 struct SchedulerTests {
     final class FakeSource: FeedSource, @unchecked Sendable {
         let name: String
         let fail: Bool
         private let lock = NSLock()
         private var _calls = 0
+        private var _times: [Millis] = []
         var calls: Int { lock.withLock { _calls } }
+        var times: [Millis] { lock.withLock { _times } }
 
         init(_ name: String, fail: Bool) {
             self.name = name
@@ -150,7 +166,7 @@ struct SchedulerTests {
         }
 
         func point(lat: Double, lon: Double, nm: Int) async throws -> [Aircraft] {
-            lock.withLock { _calls += 1 }
+            lock.withLock { _calls += 1; _times.append(.now) }
             if fail { throw HTTP.Status(code: 429) }
             return []
         }
@@ -160,6 +176,16 @@ struct SchedulerTests {
 
     final class Clock: @unchecked Sendable {
         var now: Millis = 0
+    }
+
+    @Test func concurrentCallersKeepTheSpacing() async {
+        let source = FakeSource("a", fail: false)
+        let s = FeedScheduler([source], clock: { .now }, minIntervalMs: 60)
+        await withTaskGroup(of: Void.self) { g in
+            for _ in 0..<3 { g.addTask { _ = try? await s.run { try await $0.point(lat: 0, lon: 0, nm: 10) } } }
+        }
+        let t = source.times.sorted()
+        #expect(t.count == 3 && t[2] - t[0] >= 115, "\(t)")
     }
 
     @Test func failsOverAndBenchesBrokenSource() async throws {

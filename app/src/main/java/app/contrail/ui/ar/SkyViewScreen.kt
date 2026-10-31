@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import kotlinx.coroutines.awaitCancellation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -174,6 +175,8 @@ private fun CameraPreview() {
         val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
         provider.unbindAll()
         runCatching { provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview) }
+        // The owner is the activity, which outlives this page: let go of the camera when the page closes.
+        try { awaitCancellation() } finally { provider.unbindAll() }
     }
     AndroidView({ view }, Modifier.fillMaxSize())
 }

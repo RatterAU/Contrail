@@ -61,21 +61,39 @@ private struct SkyLabels: View {
     let motion: SkyMotion
     let size: CGSize
     let hFov: Double
+    @State private var planes: [SkyPlane] = []
+
+    private struct SkyPlane: Identifiable {
+        let a: Aircraft
+        let sky: SkyPosition
+        var id: String { a.hex }
+    }
 
     var body: some View {
-        if let r = motion.matrix, let here = model.location.location {
-            let now = Millis.now
-            let lat = here.coordinate.latitude, lon = here.coordinate.longitude, alt = here.altitude * 3.28084
-            ForEach(Array(model.tracks.values), id: \.hex) { t in
-                let p = Track.extrapolate(t.aircraft, now)
-                let s = SkyGeometry.locate(obsLat: lat, obsLon: lon, obsAltFt: alt, t.aircraft, at: p)
-                if s.groundNm < 60, s.elevation > -2,
-                   let pt = SkyGeometry.project(r, bearing: s.bearing, elevation: s.elevation, hFovDeg: hFov, aspect: size.width / size.height),
-                   (-0.1...1.1).contains(pt.x), (-0.1...1.1).contains(pt.y) {
-                    SkyTag(a: t.aircraft, sky: s)
-                        .position(x: pt.x * size.width, y: pt.y * size.height)
-                        .onTapGesture { model.showSky = false; model.select(.aircraft(t.hex)) }
+        Group {
+            if let r = motion.matrix {
+                ForEach(planes) { p in
+                    if let pt = SkyGeometry.project(r, bearing: p.sky.bearing, elevation: p.sky.elevation, hFovDeg: hFov, aspect: size.width / size.height),
+                       (-0.1...1.1).contains(pt.x), (-0.1...1.1).contains(pt.y) {
+                        SkyTag(a: p.a, sky: p.sky)
+                            .position(x: pt.x * size.width, y: pt.y * size.height)
+                            .onTapGesture { model.showSky = false; model.select(.aircraft(p.id)) }
+                    }
                 }
+            }
+        }
+        .task {
+            // Planes move slowly on the sky: 5 Hz, as on Android. Only the projection follows the 30 Hz attitude.
+            while !Task.isCancelled {
+                if let here = model.location.location {
+                    let now = Millis.now
+                    let lat = here.coordinate.latitude, lon = here.coordinate.longitude, alt = here.altitude * 3.28084
+                    planes = model.tracks.values.compactMap { t in
+                        let s = SkyGeometry.locate(obsLat: lat, obsLon: lon, obsAltFt: alt, t.aircraft, at: Track.extrapolate(t.aircraft, now))
+                        return s.groundNm < 60 && s.elevation > -2 ? SkyPlane(a: t.aircraft, sky: s) : nil
+                    }
+                }
+                do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
             }
         }
     }
@@ -146,6 +164,7 @@ final class SkyCamera {
         // startRunning blocks for a moment; AVCaptureSession is documented as safe to drive from another thread.
         nonisolated(unsafe) let s = session
         await Task.detached { s.startRunning() }.value
+        if Task.isCancelled { stop() } // closed while starting: the first stop ran before this start finished
     }
 
     func stop() {

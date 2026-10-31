@@ -199,11 +199,12 @@ def legs(trace, day_start, grid, routes=None, pos=None):
         cs = next((c for c in map(callsign, pts) if c), "")
         dep, t0 = end(grid, pts, i0, i0 - 1, day_start, False)
         arr, t1 = end(grid, pts, i1, i1 + 1 if i1 + 1 < len(pts) else -1, day_start, True)
-        dep = dep or only_airport(grid, pts[i0])
         found.append([cs, dep, t0, arr, t1, pts[i0], pts[i1], pts[0][0], pts[-1][0]])
     no_stop = lambda a, b: b[0] - a[0] < nm(a, b) / 550 * 3600 + 900
     seen_dep = [f[1] for f in found]  # chain only from airports found directly, never from another inference
     seen_arr = [f[3] for f in found]
+    for f in found:
+        f[1] = f[1] or only_airport(grid, f[5])
     for k in range(1, len(found)):
         if not found[k][1] and seen_arr[k - 1] and no_stop(found[k - 1][6], found[k][5]):
             found[k][1] = seen_arr[k - 1]
@@ -397,6 +398,11 @@ if __name__ == "__main__":
         # Still flying when the newest day (day 1) ended: dropped until day 2 exists. Landed unseen mid-day: kept.
         assert incomplete_dropped([("A", "YSSY", "100", "", "~2879"), ("B", "YSSY", "1500", "", "~2000")], {1}) == [("B", "YSSY", "1500", "", "~2000")]
         assert len(incomplete_dropped([("A", "YSSY", "100", "", "~2879")], {1, 2})) == 1
+        # An inferred airport doesn't chain: QFA9's departure is inferred (climbing out near Alice Springs), so
+        # QFA8's unseen landing isn't filled in from it.
+        t = [P(0, -33.95, 151.18, "ground", cs="QFA8"), P(60, -33.9, 151.2, 1000, vr=2000), P(9000, -23.0, 134.5, 30000),
+             P(9900, -23.8, 133.9, 3900, flags=2, cs="QFA9", vr=1500), P(11000, -20.0, 134.0, 30000)]
+        assert [(a, b) for _, a, _, b, _ in L(t)] == [("YSSY", ""), ("YBAS", "")], L(t)
         # A flight split at midnight UTC joins up.
         assert merge([("QFA1", "YSSY", "100", "", "~1439"), ("QFA1", "", "~1440", "EGLL", "2000")])[0][:5] == ("QFA1", "YSSY", "100", "EGLL", "2000")
         assert merge([("Q", "YSSY", "100", "", "~1439", "a"), ("Q", "", "~1440", "EGLL", "2000", "b")])[0][5] == "a b"

@@ -4,7 +4,11 @@ import Foundation
 struct Area: Hashable, Sendable {
     var south: Double, west: Double, north: Double, east: Double
 
-    func contains(_ lat: Double, _ lon: Double) -> Bool { lat >= south && lat <= north && lon >= west && lon <= east }
+    func contains(_ lat: Double, _ lon: Double) -> Bool {
+        guard lat >= south, lat <= north else { return false }
+        // A view across the antimeridian runs past ±180, where a plane at -175 also sits at 185.
+        return (lon >= west && lon <= east) || (lon + 360 >= west && lon + 360 <= east) || (lon - 360 >= west && lon - 360 <= east)
+    }
 }
 
 /// One line of a single colour: consecutive trail segments in the same altitude band.

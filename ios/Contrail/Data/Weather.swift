@@ -56,7 +56,7 @@ struct Metar: Hashable, Sendable {
         windVariable = o.string("wdir") == "VRB"
         windSpeed = o.double("wspd")
         gust = o.double("wgst")
-        visibility = o.text("visib")
+        visibility = o.string("visib") ?? o.double("visib").map { "\($0)" } // "6+" or a decimal such as 2.61
         qnh = o.double("altim")
         clouds = ((o["clouds"] as? [JSONObject]) ?? []).compactMap { c in c.string("cover").map { Cloud(cover: $0, base: c.int("base")) } }
         category = o.string("fltCat")
@@ -121,8 +121,8 @@ struct Sigmet: Hashable, Sendable {
 actor WeatherService {
     private var metars: [String: (Metar?, Millis)] = [:]
     private var sigmetCache: ([Sigmet], Millis)?
-    private var windCache: [Int64: (WindSample, Millis)] = [:]
-    private var windStep = 0.0
+    /// One cache per grid step, so zooming back across a step doesn't spend the daily allowance again.
+    private var windCache: [Double: [Int64: (WindSample, Millis)]] = [:]
     private var windBlockedUntil: Millis = 0
 
     /// Worldwide international SIGMETs in force, cached 10 min.
@@ -139,9 +139,9 @@ actor WeatherService {
     /// the rest come in one Open-Meteo request. Returns what it has even if the request fails.
     func wind(_ points: [(Int, Int)], step: Double) async -> WindGrid {
         let now = Millis.now
-        if step != windStep { windCache = [:]; windStep = step }
-        windCache = windCache.filter { now - $0.value.1 < 3_600_000 }
-        let missing = Array(points.filter { windCache[WindGrid.key($0.0, $0.1, step)] == nil }.prefix(WindGrid.maxPoints))
+        windCache = windCache.mapValues { $0.filter { now - $0.value.1 < 3_600_000 } }
+        let have = windCache[step] ?? [:]
+        let missing = Array(points.filter { have[WindGrid.key($0.0, $0.1, step)] == nil }.prefix(WindGrid.maxPoints))
         if !missing.isEmpty, now >= windBlockedUntil {
             let coords = missing.map { WindGrid.latLon($0.0, $0.1, step) }
             let vars = WindLevel.allCases.flatMap { [$0.speedVar, $0.dirVar] }.joined(separator: ",")
@@ -155,14 +155,21 @@ actor WeatherService {
                     guard let cur = row["current"] as? JSONObject else { continue }
                     var s = WindSample(speedKt: [:], fromDeg: [:])
                     for l in WindLevel.allCases { s.speedKt[l] = cur.double(l.speedVar); s.fromDeg[l] = cur.double(l.dirVar) }
-                    windCache[WindGrid.key(p.0, p.1, step)] = (s, now)
+                    windCache[step, default: [:]][WindGrid.key(p.0, p.1, step)] = (s, now)
                 }
             } catch let e as HTTP.Status where e.code == 429 {
                 // Over the daily limit: stop asking for a while rather than hammering it.
                 windBlockedUntil = now + 15 * 60_000
             } catch {}
         }
-        return WindGrid(step: step, samples: windCache.mapValues(\.0))
+        return WindGrid(step: step, samples: (windCache[step] ?? [:]).mapValues(\.0))
+    }
+
+    /// The raw forecast, or nil if the airport doesn't issue one (an empty 200).
+    func taf(_ icao: String) async throws -> String? {
+        let (data, code) = try await HTTP.get(URL(string: "https://aviationweather.gov/api/data/taf?ids=\(icao)&format=json")!)
+        guard code != 204, !data.isEmpty else { return nil }
+        return ((try JSONSerialization.jsonObject(with: data) as? [JSONObject])?.first)?.string("rawTAF")
     }
 
     func metar(_ icao: String) async throws -> Metar? {

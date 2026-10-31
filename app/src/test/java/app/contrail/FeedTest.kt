@@ -11,6 +11,10 @@ import app.contrail.domain.Geo
 import app.contrail.domain.PositionSource
 import app.contrail.domain.Track
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -136,6 +140,31 @@ class TrackTest {
     }
 }
 
+class TrackMergeTest {
+    private val full = """{"hex":"7c1234","flight":"QFA1","r":"VH-OQA","t":"A388","category":"A5","alt_baro":36000,"gs":450,"track":80,"lat":-34.0,"lon":138.0,"seen":0}"""
+    private fun report(json: String, now: Long) = parseReadsb("""{"ac":[$json]}""", now).single()
+
+    @Test fun thinReportKeepsTheRegistryFields() {
+        val thin = """{"hex":"7c1234","alt_baro":36000,"gs":450,"track":80,"lat":-34.01,"lon":138.01,"seen":0}"""
+        val a = Track.start(report(full, 1_000), 1_000).update(report(thin, 2_000), 2_000).aircraft
+        assertEquals("QFA1", a.callsign)
+        assertEquals("VH-OQA", a.registration)
+        assertEquals("A388", a.typeCode)
+        assertEquals("A5", a.category)
+        assertEquals(-34.01, a.lat, 1e-9)
+    }
+
+    @Test fun roughPositionNeverReplacesARealFix() {
+        val rough = report("""{"hex":"7c1234","rr_lat":-20.0,"rr_lon":130.0,"seen":0}""", 2_000)
+        assertEquals(-34.0, Track.start(report(full, 1_000), 1_000).update(rough, 2_000).aircraft.lat, 1e-9)
+    }
+
+    @Test fun agesComeFromThePhoneClockEvenWhenTheFeedDisagrees() {
+        val ahead = 1_000_000L + 5 * 60_000
+        assertEquals(ahead, parseReadsb("""{"now":1000000,"ac":[$full]}""", ahead).single().seenTime)
+    }
+}
+
 class SchedulerTest {
     private class FakeSource(name: String, val fail: Boolean) :
         AdsbSource(if (name == "a") ADSB_LOL else ADSB_FI, HttpClient(), { 0L }) {
@@ -160,6 +189,40 @@ class SchedulerTest {
         repeat(4) { clock += 1_000; s.run { it.point(0.0, 0.0, 10) } }
         assertEquals(1, bad.calls)
         assertNotNull(s.health.value[good.name]?.latencyMs)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun concurrentCallersKeepTheSpacing() = runTest {
+        val times = ArrayList<Long>()
+        val source = object : AdsbSource(ADSB_LOL, HttpClient(), { 0L }) {
+            override suspend fun point(lat: Double, lon: Double, nm: Int): List<Aircraft> {
+                times += testScheduler.currentTime
+                return emptyList()
+            }
+        }
+        val s = FeedScheduler(listOf(source), clock = { testScheduler.currentTime }, minIntervalMs = 1_100)
+        coroutineScope { repeat(4) { launch { s.run { it.point(0.0, 0.0, 10) } } } }
+        assertEquals(listOf(0L, 1_100L, 2_200L, 3_300L), times)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test fun aCancelledWaitGivesItsSlotBack() = runTest {
+        val times = ArrayList<Long>()
+        val source = object : AdsbSource(ADSB_LOL, HttpClient(), { 0L }) {
+            override suspend fun point(lat: Double, lon: Double, nm: Int): List<Aircraft> {
+                times += testScheduler.currentTime
+                return emptyList()
+            }
+        }
+        val s = FeedScheduler(listOf(source), clock = { testScheduler.currentTime }, minIntervalMs = 1_100)
+        s.run { it.point(0.0, 0.0, 10) }
+        repeat(5) {
+            val waiting = launch { s.run { it.point(0.0, 0.0, 10) } }
+            testScheduler.advanceTimeBy(100)
+            waiting.cancelAndJoin()
+        }
+        s.run { it.point(0.0, 0.0, 10) }
+        assertEquals(listOf(0L, 1_100L), times)
     }
 
     @Test fun allDownThrows() = runTest {

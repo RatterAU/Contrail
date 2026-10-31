@@ -47,6 +47,7 @@ struct AirportState {
     var airport: Airport
     var runways: [Runway]
     var metar: Metar?
+    var taf: String?
     var weatherLoaded = false
     var routes: [String: Route?] = [:]
     var routesLoaded = false
@@ -119,7 +120,6 @@ final class AppModel {
     }
 
     private(set) var details: Enrichment?
-    private(set) var detailsLoading = false
 
     func route(for t: Track, now: Millis) -> Route? {
         FlightProgress.shownRoute(t, listed: details?.route, legs: details?.legs ?? [], now: now)
@@ -226,7 +226,10 @@ final class AppModel {
         } catch is CancellationError {
             return []
         } catch {
-            if !Task.isCancelled { status = .offline }
+            if !Task.isCancelled {
+                status = .offline
+                apply(await store.merge([], now: .now)) // planes still age out with every feed down
+            }
             return []
         }
     }
@@ -243,13 +246,17 @@ final class AppModel {
             g.addTask { await self.loadHistory(hex) }
             g.addTask {
                 var lastCallsign: String?? = .none
+                // Its own task: the lookup retries for up to two minutes, and the plane must keep refreshing meanwhile.
+                var load: Task<Void, Never>?
+                defer { load?.cancel() }
                 while !Task.isCancelled {
                     let t = await self.tracks[hex]
                     if t == nil || t!.staleness(.now) > 8_000 { await self.refresh { try await $0.query(.hex(hex)) } }
                     let cs = await self.tracks[hex]?.aircraft.callsign
                     if lastCallsign != .some(cs) {
                         lastCallsign = .some(cs)
-                        await self.loadDetails(hex, cs)
+                        load?.cancel()
+                        load = Task { await self.loadDetails(hex, cs) }
                     }
                     try? await Task.sleep(for: .seconds(3))
                 }
@@ -262,11 +269,9 @@ final class AppModel {
             details = c
             return
         }
-        detailsLoading = true
         let e = await enrichment.lookup(hex, callsign) { [weak self] p in await self?.showPartial(hex, p) }
-        guard selectedHex == hex else { return }
+        guard !Task.isCancelled, selectedHex == hex else { return }
         details = e
-        detailsLoading = false
         map.selectionChanged()
         // A source was down (the answer wasn't cached): ask again while the plane stays selected.
         for wait in [30, 90] {
@@ -346,6 +351,9 @@ final class AppModel {
         guard airportState?.airport == ap else { return }
         airportState?.metar = m ?? nil
         airportState?.weatherLoaded = true
+        let taf = try? await weather.taf(icao)
+        guard airportState?.airport == ap else { return }
+        airportState?.taf = taf ?? nil
     }
 
     /// While Nearby or Sky view is open, keep the area around the user fresh.
@@ -398,8 +406,11 @@ final class AppModel {
         let step = WindGrid.step(latSpan: a.north - a.south, lonSpan: lonSpan)
         let points = WindGrid.points(south: a.south, west: a.west, north: a.north, east: a.east, step: step)
         while !Task.isCancelled {
-            windGrid = await weather.wind(points, step: step)
-            do { try await Task.sleep(for: .seconds(3600)) } catch { return }
+            let grid = await weather.wind(points, step: step)
+            windGrid = grid
+            // A failed or rate-limited fetch comes back short: try again soon rather than in an hour.
+            let complete = points.allSatisfy { grid.samples[WindGrid.key($0.0, $0.1, step)] != nil }
+            do { try await Task.sleep(for: .seconds(complete ? 3600 : 120)) } catch { return }
         }
     }
 

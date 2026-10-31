@@ -36,7 +36,10 @@ object CloudTiles {
         val res = chain.proceed(chain.request())
         val url = chain.request().url
         if (!res.isSuccessful || url.host != "gibs.earthdata.nasa.gov" || !url.encodedPath.contains("Clean_Infrared")) return@Interceptor res
-        val bmp = res.body.bytes().let { BitmapFactory.decodeByteArray(it, 0, it.size) } ?: return@Interceptor res
+        val type = res.body.contentType()
+        val bytes = res.body.bytes()
+        // The body is consumed by now, so an undecodable tile goes back with its bytes put back.
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@Interceptor res.newBuilder().body(bytes.toResponseBody(type)).build()
         val px = IntArray(bmp.width * bmp.height)
         bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
         recolour(px)

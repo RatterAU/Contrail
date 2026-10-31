@@ -77,6 +77,16 @@ class MapRenderTest {
         assertEquals(2, lines(trackThrough(Triple(-35.0, 138.0, 35000), Triple(-35.0, 138.1, 35000), Triple(-35.0, 140.1, 35000), Triple(-35.0, 140.2, 35000))).size)
     }
 
+    @Test fun selectedTrailStopsAtItsLastFixAndTheTailReachesThePlane() {
+        val t = trackThrough(Triple(-35.0, 138.0, 35000), Triple(-35.0, 138.1, 35000), Triple(-35.0, 138.2, 35000))
+        val body = MapController.trailFeatures(emptyList(), t, 100_000).features()!!.single().geometry() as org.maplibre.geojson.LineString
+        assertEquals(138.2, body.coordinates().last().longitude(), 1e-9)
+        val tail = MapController.tailFeatures(t, 100_000).features()!!.single().geometry() as org.maplibre.geojson.LineString
+        assertEquals(138.2, tail.coordinates().first().longitude(), 1e-9)
+        assertEquals(2, tail.coordinates().size)
+        assertSame(MapController.tailFeatures(null, now), MapController.trailFeatures(emptyList(), null, now))
+    }
+
     @Test fun emptyLayersReuseOneInstanceSoRenderCanSkipThem() {
         // MapController.render skips a source when handed the same object as last time.
         assertSame(MapController.trailFeatures(emptyList(), null, now), MapController.trailFeatures(emptyList(), null, now))

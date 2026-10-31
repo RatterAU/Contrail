@@ -203,17 +203,28 @@ final class StyledLines: MKMultiPolyline {
 class RadarOverlay: MKTileOverlay, @unchecked Sendable {
     class var maxZoom: Int { 7 }
 
+    /// A transparent tile, for tiles outside a satellite's longitudes and for failed ones. Not nil: MapKit treats a nil
+    /// tile as never loaded and redraws the whole map every frame (measured: 23% CPU on a still map, 0.2% with this).
+    static let empty: Data = {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1), format: format).pngData { _ in }
+    }()
+
     override func loadTile(at path: MKTileOverlayPath, result: @escaping @Sendable (Data?, (any Error)?) -> Void) {
         let maxZoom = Self.maxZoom
-        guard path.z > maxZoom else { return super.loadTile(at: path, result: result) }
+        guard path.z > maxZoom else {
+            return super.loadTile(at: path) { data, _ in result(data ?? RadarOverlay.empty, nil) }
+        }
         let shift = path.z - maxZoom
         let parent = MKTileOverlayPath(x: path.x >> shift, y: path.y >> shift, z: maxZoom, contentScaleFactor: path.contentScaleFactor)
         let n = 1 << shift
         let sx = path.x - (parent.x << shift), sy = path.y - (parent.y << shift)
-        super.loadTile(at: parent) { data, error in
-            guard let data, let img = UIImage(data: data)?.cgImage else { return result(nil, error) }
+        super.loadTile(at: parent) { data, _ in
+            guard let data, let img = UIImage(data: data)?.cgImage else { return result(RadarOverlay.empty, nil) }
             let w = img.width / n, h = img.height / n
-            guard let part = img.cropping(to: CGRect(x: sx * w, y: sy * h, width: w, height: h)) else { return result(nil, nil) }
+            guard let part = img.cropping(to: CGRect(x: sx * w, y: sy * h, width: w, height: h)) else { return result(RadarOverlay.empty, nil) }
             let size = CGSize(width: 256, height: 256)
             let format = UIGraphicsImageRendererFormat()
             format.scale = 1
@@ -256,19 +267,10 @@ final class CloudOverlay: RadarOverlay, @unchecked Sendable {
         let n = Double(1 << path.z)
         let tileWest = Double(path.x) / n * 360 - 180, tileEast = Double(path.x + 1) / n * 360 - 180
         guard tileEast > west, tileWest < east else { return result(CloudOverlay.empty, nil) }
-        super.loadTile(at: path) { data, error in
-            result(data.flatMap(CloudOverlay.recolour), error)
+        super.loadTile(at: path) { data, _ in
+            result(data.flatMap(CloudOverlay.recolour) ?? CloudOverlay.empty, nil)
         }
     }
-
-    /// A transparent tile, for tiles outside this satellite's longitudes. Not nil: MapKit treats a nil tile as never
-    /// loaded and redraws the whole map every frame (measured: 23% CPU on a still map, 0.2% with this).
-    private static let empty: Data = {
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = false
-        return UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1), format: format).pngData { _ in }
-    }()
 
     /// Grey is brightness temperature: clear ground and sea are about 90–130, cloud tops brighten as they get colder.
     /// Coloured pixels are the coldest tops (storms): solid white.

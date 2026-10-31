@@ -64,14 +64,11 @@ struct ScreenWind {
         let gx = min(max(x / cell, 0), Double(cols) - 1.001), gy = min(max(y / cell, 0), Double(rows) - 1.001)
         let i = Int(gx), j = Int(gy)
         let fx = gx - Double(i), fy = gy - Double(j)
-        var sx = 0.0, sy = 0.0
-        for (di, dj, w) in [(0, 0, (1 - fx) * (1 - fy)), (1, 0, fx * (1 - fy)), (0, 1, (1 - fx) * fy), (1, 1, fx * fy)] {
-            let k = (j + dj) * cols + i + di
-            if vx[k].isNaN { return nil }
-            sx += vx[k] * w
-            sy += vy[k] * w
-        }
-        return (sx, sy)
+        // Written out, not looped over an array of tuples: this runs for every particle at 20 fps.
+        let a = j * cols + i, b = a + 1, c = a + cols, d = c + 1
+        if vx[a].isNaN || vx[b].isNaN || vx[c].isNaN || vx[d].isNaN { return nil }
+        let wa = (1 - fx) * (1 - fy), wb = fx * (1 - fy), wc = (1 - fx) * fy, wd = fx * fy
+        return (vx[a] * wa + vx[b] * wb + vx[c] * wc + vx[d] * wd, vy[a] * wa + vy[b] * wb + vy[c] * wc + vy[d] * wd)
     }
 
     @MainActor static func sample(_ map: MKMapView, _ grid: WindGrid, _ level: WindLevel, _ size: CGSize) -> ScreenWind? {

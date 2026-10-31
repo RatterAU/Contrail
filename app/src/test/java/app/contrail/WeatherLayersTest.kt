@@ -38,6 +38,13 @@ class WeatherLayersTest {
         assertEquals(-170.0, WindGrid.latLon(0, 190, 1.0).second, 1e-9)
     }
 
+    @Test fun gridNeverAsksForALatitudePastThePole() {
+        for ((south, north) in listOf(-80.0 to 80.0, -85.0 to 85.0)) for (step in listOf(20.0, 30.0)) {
+            val lats = WindGrid.points(south, -180.0, north, 180.0, step).map { WindGrid.latLon(it.first, it.second, step).first }
+            assertTrue("$south..$north at $step: ${lats.max()}", lats.all { it in -90.0..90.0 })
+        }
+    }
+
     @Test fun gridStaysWithinTheRequestBudget() {
         for ((lat, lon) in listOf(0.5 to 0.8, 4.0 to 6.0, 30.0 to 60.0, 160.0 to 360.0)) {
             val step = WindGrid.stepFor(lat, lon)

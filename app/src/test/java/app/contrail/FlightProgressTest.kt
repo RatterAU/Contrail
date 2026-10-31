@@ -3,8 +3,10 @@ package app.contrail
 import app.contrail.data.enrich.Airport
 import app.contrail.data.enrich.Route
 import app.contrail.data.feed.parseReadsb
+import app.contrail.domain.FlightInsights
 import app.contrail.domain.FlightProgressCalc
 import app.contrail.domain.Geo
+import app.contrail.domain.Phase
 import app.contrail.domain.Track
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -26,6 +28,46 @@ class FlightProgressTest {
     private fun trackAt(lat: Double, lon: Double, trk: Double = 0.0, ground: Boolean = false, gs: Double = 450.0): Track {
         val heading = if (trk == 0.0) Geo.bearing(lat, lon, syd.lat, syd.lon) else trk
         return Track.start(base.copy(lat = lat, lon = lon, track = heading, onGround = ground, groundSpeed = gs, positionTime = 0, seenTime = 0), 0)
+    }
+
+    private val outbound = Geo.bearing(adl.lat, adl.lon, syd.lat, syd.lon)
+    private fun flying(lat: Double, lon: Double, trk: Double?, vr: Double) =
+        Track.start(base.copy(lat = lat, lon = lon, track = trk, baroRate = vr, positionTime = 0, seenTime = 0), 0)
+
+    @Test fun midRouteWithoutATrackIsNotVerified() {
+        val (lat, lon) = Geo.destination(adl.lat, adl.lon, outbound, 300.0)
+        assertFalse(FlightProgressCalc.compute(flying(lat, lon, null, 0.0), route, 0).verified)
+    }
+
+    @Test fun nearTheEndsOnlyTheOppositeOfTheRouteFails() {
+        val (pastLat, pastLon) = Geo.destination(syd.lat, syd.lon, outbound, 30.0)
+        assertFalse("just left that stop", FlightProgressCalc.compute(flying(pastLat, pastLon, outbound, 2000.0), route, 0).verified)
+        assertTrue("vectored for the approach", FlightProgressCalc.compute(flying(pastLat, pastLon, outbound, -1500.0), route, 0).verified)
+        val (nearLat, nearLon) = Geo.destination(adl.lat, adl.lon, outbound, 30.0)
+        assertFalse("arriving at the listed origin", FlightProgressCalc.compute(flying(nearLat, nearLon, (outbound + 180) % 360, -1500.0), route, 0).verified)
+        assertTrue("departure procedure", FlightProgressCalc.compute(flying(nearLat, nearLon, (outbound + 180) % 360, 2000.0), route, 0).verified)
+    }
+
+    @Test fun zeroSpeedAtAltitudeGivesASaneDeparture() {
+        val (lat, lon) = Geo.destination(adl.lat, adl.lon, outbound, 300.0)
+        val p = FlightProgressCalc.compute(trackAt(lat, lon, gs = 0.0), route, 0)
+        assertTrue(p.verified)
+        assertTrue("${p.departedAt}", p.departedAt!! > -2 * 3_600_000)
+    }
+
+    @Test fun aTakeoffFromTheFlightBeforeIsNotThisOnesDeparture() {
+        val parked = trackAt(adl.lat, adl.lon, ground = true, gs = 0.0).copy(takeoffAt = 5_000)
+        assertNull(FlightProgressCalc.compute(parked, route, 10_000).departedAt)
+    }
+
+    @Test fun phaseLinesDontClaimWhatThePositionDenies() {
+        fun line(phase: Phase, t: Track) = FlightInsights.phaseLine(phase, t.aircraft, route, FlightProgressCalc.compute(t, route, 0))
+        val (lat, lon) = Geo.destination(adl.lat, adl.lon, outbound, 300.0)
+        assertTrue(line(Phase.CLIMBING, trackAt(lat, lon)).startsWith("Climbing through"))
+        val (nearLat, nearLon) = Geo.destination(adl.lat, adl.lon, outbound, 30.0)
+        assertEquals("Climbing out of Adelaide", line(Phase.CLIMBING, trackAt(nearLat, nearLon)))
+        assertEquals("Just landed", line(Phase.LANDED, trackAt(adl.lat, adl.lon, ground = true, gs = 0.0)))
+        assertEquals("Landed in Sydney", line(Phase.LANDED, trackAt(syd.lat, syd.lon, ground = true, gs = 0.0)))
     }
 
     @Test fun midRouteIsVerifiedWithEta() {

@@ -65,6 +65,8 @@ struct Track: Hashable, Sendable {
 
     /// Merge a newer report into this track. Older or duplicate reports are ignored.
     func updated(with next: Aircraft, now: Millis) -> Track {
+        // A rough position is the receiver's, up to hundreds of nm off: it never replaces a real fix.
+        if next.source == .rough && aircraft.source != .rough { return self }
         if next.positionTime <= aircraft.positionTime {
             guard next.seenTime > aircraft.seenTime else { return self }
             var t = self

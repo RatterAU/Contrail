@@ -53,7 +53,7 @@ data class NearbyItem(val track: Track, val sky: SkyPosition)
 fun nearbyItems(tracks: Collection<Track>, loc: Location, now: Long, maxNm: Double = 60.0): List<NearbyItem> {
     val obsAltFt = if (loc.hasAltitude()) loc.altitude * 3.281 else 0.0
     return tracks.mapNotNull { t ->
-        val (lat, lon) = t.displayPosition(now)
+        val (lat, lon) = Track.extrapolate(t.aircraft, now)
         val sky = SkyGeometry.locate(loc.latitude, loc.longitude, obsAltFt, t.aircraft, lat, lon)
         if (sky.groundNm > maxNm) null else NearbyItem(t, sky)
     }.sortedWith(compareBy({ it.track.aircraft.onGround }, { it.sky.slantNm })) // airborne first

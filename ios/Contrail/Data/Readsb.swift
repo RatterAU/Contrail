@@ -26,10 +26,10 @@ enum JSON {
 /// readsb v2 JSON, shared by adsb.lol and adsb.fi. Point queries name the list "aircraft" on adsb.fi, "ac" elsewhere.
 func parseReadsb(_ data: Data, receivedAt: Millis) throws -> [Aircraft] {
     let res = try JSON.object(data)
-    // Feeds report "now" in ms; trust it over the phone clock only if it is plausible.
-    let now = res.double("now").map { Millis($0) }.flatMap { abs($0 - receivedAt) < 10 * 60_000 ? $0 : nil } ?? receivedAt
+    // The phone's clock, not the feed's "now": ages and dead-reckoning compare against it, so a phone a minute or two
+    // out would otherwise see every plane as long gone.
     let list = (res["ac"] as? [JSONObject]) ?? (res["aircraft"] as? [JSONObject]) ?? []
-    return list.compactMap { aircraft(from: $0, now: now) }
+    return list.compactMap { aircraft(from: $0, now: receivedAt) }
 }
 
 func parseReadsb(_ json: String, receivedAt: Millis) throws -> [Aircraft] {

@@ -121,9 +121,14 @@ import app.contrail.ui.theme.glass
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import org.maplibre.android.maps.MapLibreMapOptions
+import app.contrail.data.enrich.Route
+import app.contrail.domain.TrailPoint
 import org.maplibre.geojson.FeatureCollection
 
 private enum class MapSheet { LAYERS, FILTERS }
+
+/** One render pass's results, worked out off the main thread. */
+private data class Frame(val aircraft: FeatureCollection, val route: FeatureCollection, val checked: Route?, val tail: FeatureCollection)
 
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -227,9 +232,12 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
     LaunchedEffect(controller, locationGranted) {
         val c = controller ?: return@LaunchedEffect
         if (centredOnUser || !locationGranted) return@LaunchedEffect
-        val fix = DeviceSensors.location(context).first()
-        if (!userMoved && !centredOnUser) c.moveTo(fix.latitude, fix.longitude, zoom = maxOf(c.map.cameraPosition.zoom, 8.5))
-        centredOnUser = true
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            if (centredOnUser) return@repeatOnLifecycle
+            val fix = DeviceSensors.location(context).first()
+            if (!userMoved && !centredOnUser) c.moveTo(fix.latitude, fix.longitude, zoom = maxOf(c.map.cameraPosition.zoom, 8.5))
+            centredOnUser = true
+        }
     }
 
     LaunchedEffect(controller, prefs.airports, prefs.labels, mapStyle) {
@@ -266,6 +274,8 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
         val c = controller ?: return@LaunchedEffect
         var trail = MapController.trailFeatures(emptyList(), null, 0)
         var trailAt = 0L
+        var trailOf: List<TrailPoint>? = null
+        var trailAll = false
         val logoRequested = HashSet<String>()
         var fittedFor: String? = null
         var pastFitted: Any? = null
@@ -277,12 +287,7 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 val sel = vm.selected.value
                 val all = vm.tracks.value
                 val selTrack = sel?.let { all[it] }
-                // Only draw the route when it checks out against the live position.
-                val checked = selTrack?.let { vm.enrichment.value.let { e -> FlightProgressCalc.shownRoute(it, e?.route, now, e?.legs.orEmpty()) } }?.takeIf { r ->
-                    FlightProgressCalc.compute(selTrack, r, now).verified
-                }
-                val origin = checked?.origin
-                val dest = checked?.destination
+                val enriched = vm.enrichment.value
                 val p = vm.prefs.value
                 val static = StaticData.now()
                 val cam = c.map.cameraPosition
@@ -290,20 +295,33 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 val logoIds = c.logoIds
                 val scrubPoint = vm.scrub.value
                 val area = c.cullArea()
-                // Every plane's trail is costly to rebuild, so with "all trails" on it refreshes once a second.
-                val rebuildTrail = !p.allTrails || now - trailAt >= 1_000
-                val (ac, route) = withContext(Dispatchers.Default) {
+                // Every plane's trail is costly to rebuild, so with "all trails" on it refreshes once a second. The
+                // selected trail changes only when it grows: its moving end is the tail, sent on its own each frame.
+                val rebuildTrail = selTrack?.trail !== trailOf || p.allTrails != trailAll || (p.allTrails && now - trailAt >= 1_000)
+                val (ac, route, checked, tail) = withContext(Dispatchers.Default) {
                     if (rebuildTrail) {
                         val visible = if (p.allTrails) all.values.filter { p.filters.matches(it.aircraft) } else emptyList()
                         trail = MapController.trailFeatures(visible, selTrack, now)
                         trailAt = now
+                        trailOf = selTrack?.trail
+                        trailAll = p.allTrails
+                    }
+                    // Only draw the route when it checks out against the live position.
+                    val checked = selTrack?.let { FlightProgressCalc.shownRoute(it, enriched?.route, now, enriched?.legs.orEmpty()) }?.takeIf { r ->
+                        FlightProgressCalc.compute(selTrack, r, now).verified
                     }
                     val logoFor: (Aircraft) -> String? = { a ->
                         static?.airlineCode(a.callsign)?.let(MapController::logoId)?.takeIf { it in logoIds }
                     }
-                    MapController.aircraftFeatures(all.values, sel, p.filters, now, area, if (logosShown) logoFor else { _ -> null }) to
-                        MapController.routeFeatures(selTrack, origin, dest, now)
+                    Frame(
+                        MapController.aircraftFeatures(all.values, sel, p.filters, now, area, if (logosShown) logoFor else { _ -> null }),
+                        MapController.routeFeatures(selTrack, checked?.origin, checked?.destination, now),
+                        checked,
+                        MapController.tailFeatures(selTrack, now),
+                    )
                 }
+                val origin = checked?.origin
+                val dest = checked?.destination
                 // Fetch badges for airlines on screen (each once; AirlineLogos caches them on disk).
                 if (logosShown) {
                     for (t in all.values) {
@@ -323,14 +341,14 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 c.dimLive(pastView != null)
                 if (pastView == null) {
                     pastFitted = null
-                    c.render(ac, trail, route, MapController.scrubFeatures(scrubPoint))
+                    c.render(ac, trail, tail, route, MapController.scrubFeatures(scrubPoint))
                 } else {
                     // A past flight replaces the live trail and route; live planes stay on the map.
                     val path = pastView.path.orEmpty()
                     val ends = listOf(pastView.flight.from, pastView.flight.to).map { code -> code?.let { static?.airport(it) } }
                     val replay = vm.replay.value
                     val plane = selTrack?.let { iconName(Shape.of(it.aircraft), AltitudeColors.SELECTED_BAND) }
-                    c.render(ac, MapController.pastTrailFeatures(path), MapController.endFeatures(*ends.toTypedArray()),
+                    c.render(ac, MapController.pastTrailFeatures(path), MapController.EMPTY, MapController.endFeatures(*ends.toTypedArray()),
                         if (replay != null && plane != null) MapController.replayFeatures(replay, plane, Shape.of(selTrack.aircraft).size * 1.3f) else MapController.scrubFeatures(scrubPoint))
                     if (path.size >= 2 && pastFitted !== pastView.flight) {
                         pastFitted = pastView.flight
@@ -393,30 +411,34 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
     var userLocation by remember { mutableStateOf<android.location.Location?>(null) }
     // 30 Hz: read only by the arrows and sky labels (via lambdas), never here, or the whole screen would recompose.
     val orientation = remember { mutableStateOf<Orientation?>(null) }
-    LaunchedEffect(nearbyOpen || skyOpen) {
+    LaunchedEffect(nearbyOpen || skyOpen, locationGranted) {
         if (!(nearbyOpen || skyOpen)) { vm.nearbyCentre.value = null; return@LaunchedEffect }
         if (!hasLocation()) {
             permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             return@LaunchedEffect
         }
-        // The rotation vector is referenced to magnetic north; plane bearings are true.
-        var declination = 0.0
-        launch {
-            DeviceSensors.location(context).collect { l ->
-                userLocation = l
-                declination = android.hardware.GeomagneticField(l.latitude.toFloat(), l.longitude.toFloat(), l.altitude.toFloat(), l.time).declination.toDouble()
-                // Rounded so small GPS wobble doesn't restart the area polling.
-                vm.nearbyCentre.value = (Math.round(l.latitude * 20) / 20.0) to (Math.round(l.longitude * 20) / 20.0)
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            // The rotation vector is referenced to magnetic north; plane bearings are true.
+            var declination = 0.0
+            launch {
+                DeviceSensors.location(context).collect { l ->
+                    userLocation = l
+                    declination = android.hardware.GeomagneticField(l.latitude.toFloat(), l.longitude.toFloat(), l.altitude.toFloat(), l.time).declination.toDouble()
+                    // Rounded so small GPS wobble doesn't restart the area polling.
+                    vm.nearbyCentre.value = (Math.round(l.latitude * 20) / 20.0) to (Math.round(l.longitude * 20) / 20.0)
+                }
             }
+            DeviceSensors.orientation(context).collect { orientation.value = Orientation(SkyGeometry.trueNorth(it.matrix, declination), it.needsCalibration) }
         }
-        DeviceSensors.orientation(context).collect { orientation.value = Orientation(SkyGeometry.trueNorth(it.matrix, declination), it.needsCalibration) }
     }
     var nearbyItems by remember { mutableStateOf<List<NearbyItem>?>(null) }
     LaunchedEffect(nearbyOpen || skyOpen, userLocation) {
         val loc = userLocation ?: return@LaunchedEffect
-        while (isActive && (nearbyOpen || skyOpen)) {
-            nearbyItems = withContext(Dispatchers.Default) { nearbyItems(vm.tracks.value.values, loc, System.currentTimeMillis()) }
-            delay(if (skyOpen) 200 else 1_000)
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (isActive && (nearbyOpen || skyOpen)) {
+                nearbyItems = withContext(Dispatchers.Default) { nearbyItems(vm.tracks.value.values, loc, System.currentTimeMillis()) }
+                delay(if (skyOpen) 200 else 1_000)
+            }
         }
     }
     val searchResults by vm.searchResults.collectAsStateWithLifecycle()
@@ -486,18 +508,12 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                     LiveChip(status, count)
                     prefs.wind?.let { lvl ->
                         Text(
-                            if (wind == null) "Wind ${lvl.label} · loading" else "Wind ${lvl.label}",
+                            if (wind?.samples.isNullOrEmpty()) "Wind ${lvl.label} · loading" else "Wind ${lvl.label}",
                             style = MaterialTheme.typography.labelMedium.merge(Numeric),
                             modifier = Modifier.glass(RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 7.dp),
                         )
                     }
-                    radarFrames.getOrNull(radarIndex)?.let { (time, _) ->
-                        Text(
-                            "Radar ${clock(time)}",
-                            style = MaterialTheme.typography.labelMedium.merge(Numeric),
-                            modifier = Modifier.glass(RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 7.dp),
-                        )
-                    }
+                    RadarChip(radarFrames) { radarIndex }
                 }
 
                 Column(
@@ -613,6 +629,18 @@ private fun LiveChip(status: FeedStatus, count: Int) {
         Box(Modifier.size(8.dp).background(dot, CircleShape))
         Spacer(Modifier.width(7.dp))
         Text(text, style = MaterialTheme.typography.labelMedium.merge(Numeric))
+    }
+}
+
+/** Its own composable so the frame index, which ticks at 2 Hz, is read here and not across the whole screen. */
+@Composable
+private fun RadarChip(frames: List<Pair<Long, String>>, index: () -> Int) {
+    frames.getOrNull(index())?.let { (time, _) ->
+        Text(
+            "Radar ${clock(time)}",
+            style = MaterialTheme.typography.labelMedium.merge(Numeric),
+            modifier = Modifier.glass(RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 7.dp),
+        )
     }
 }
 

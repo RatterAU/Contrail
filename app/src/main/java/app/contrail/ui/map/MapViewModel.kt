@@ -31,6 +31,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -98,7 +99,8 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
         .transformLatest { on ->
             if (!on) { emit(emptyList()); return@transformLatest }
             while (true) {
-                emit(runCatching { c.weather.radarFrames().takeLast(8) }.getOrDefault(emptyList()))
+                // A failed refresh keeps the frames already showing.
+                runCatching { c.weather.radarFrames().takeLast(8) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { emit(it) }
                 delay(5 * 60_000)
             }
         }
@@ -139,8 +141,10 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
             val step = WindGrid.stepFor(area.north - area.south, if (area.east < area.west) area.east + 360 - area.west else area.east - area.west)
             val points = WindGrid.points(area.south, area.west, area.north, area.east, step)
             while (true) {
-                runCatching { c.weather.wind(points, step) }.getOrNull()?.let { emit(it) }
-                delay(60 * 60_000)
+                val grid = c.weather.wind(points, step)
+                emit(grid)
+                // A failed or rate-limited fetch comes back short: try again soon rather than in an hour.
+                delay(if (points.all { WindGrid.key(it.first, it.second, step) in grid.samples }) 60 * 60_000 else 2 * 60_000)
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -301,8 +305,10 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
             val icao = ap.icao ?: return@launch
             // One retry: a cold first request sometimes fails, and that would read as "no weather report".
             val metar = runCatching { c.weather.metar(icao) }.recoverCatching { c.weather.metar(icao) }.getOrNull()
+            ensureActive() // runCatching swallows cancellation; this airport's answer mustn't land on the next one
             _airportUi.update { it?.copy(metar = metar, weatherLoaded = true) }
             val taf = runCatching { c.weather.taf(icao) }.getOrNull()
+            ensureActive()
             _airportUi.update { it?.copy(taf = taf) }
         }
         val limit = Semaphore(4)
@@ -320,7 +326,8 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
             _airportUi.update { ui ->
                 ui?.copy(
                     boards = boards,
-                    activeRunway = AirportBoards.activeRunway(ap, ui.runways, tracks.value.values, ui.metar?.windDir),
+                    // Calm reports direction 0, which says nothing about the runway.
+                    activeRunway = AirportBoards.activeRunway(ap, ui.runways, tracks.value.values, ui.metar?.takeIf { (it.wspd ?: 0.0) >= 1 }?.windDir),
                 )
             }
             delay(20_000)
@@ -335,6 +342,7 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
             throw e
         } catch (e: FeedsUnavailableException) {
             _status.value = FeedStatus.OFFLINE
+            withContext(Dispatchers.Default) { c.traffic.merge(emptyList()) } // planes still age out with every feed down
         }
     }
 

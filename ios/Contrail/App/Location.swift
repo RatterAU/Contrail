@@ -17,8 +17,9 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
         authorization = manager.authorizationStatus
         super.init()
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-        manager.distanceFilter = 10
+        // Planes are miles away, so 100 m is plenty; this leaves the GPS radio mostly off.
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        manager.distanceFilter = 50
         manager.pausesLocationUpdatesAutomatically = false
         manager.headingFilter = 2
     }

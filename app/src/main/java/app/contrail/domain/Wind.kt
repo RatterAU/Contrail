@@ -55,8 +55,10 @@ class WindGrid(val step: Double, val samples: Map<Long, WindSample>) {
 
         /** Grid indices (lat, lon) covering the box plus one cell all round. */
         fun points(south: Double, west: Double, north: Double, east: Double, step: Double): List<Pair<Int, Int>> {
-            val i0 = floor(maxOf(south, -89.0) / step).toInt() - 1
-            val i1 = ceil(minOf(north, 89.0) / step).toInt() + 1
+            // Clamped to the poles: Open-Meteo answers 400 for the whole request if one latitude is past ±90.
+            val pole = (90 / step).toInt()
+            val i0 = maxOf(floor(maxOf(south, -89.0) / step).toInt() - 1, -pole)
+            val i1 = minOf(ceil(minOf(north, 89.0) / step).toInt() + 1, pole)
             val j0 = floor(west / step).toInt() - 1
             val j1 = ceil((if (east < west) east + 360 else east) / step).toInt() + 1
             return (i0..i1).flatMap { i -> (j0..j1).map { j -> i to j } }.distinctBy { key(it.first, it.second, step) }

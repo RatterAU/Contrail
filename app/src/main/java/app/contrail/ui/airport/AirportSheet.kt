@@ -38,7 +38,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import app.contrail.data.weather.Metar
+import app.contrail.data.weather.Taf
 import app.contrail.domain.BoardRow
 import app.contrail.domain.BoardStatus
 import app.contrail.domain.Fmt
@@ -59,7 +63,12 @@ fun AirportSheet(ui: AirportUi, onAircraft: (String) -> Unit, onClose: () -> Uni
     val ap = ui.airport
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     // Everything here shows minutes, so tick on the minute rather than every second.
-    LaunchedEffect(Unit) { while (true) { delay(60_000 - System.currentTimeMillis() % 60_000); now = System.currentTimeMillis() } }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(Unit) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) { now = System.currentTimeMillis(); delay(60_000 - now % 60_000) }
+        }
+    }
     val zone = ap.tz?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.systemDefault()
 
     Column(
@@ -87,7 +96,7 @@ fun AirportSheet(ui: AirportUi, onAircraft: (String) -> Unit, onClose: () -> Uni
             CloseButton(onClose)
         }
         Spacer(Modifier.height(14.dp))
-        WeatherCard(ui.metar, ui.weatherLoaded, now)
+        WeatherCard(ui.metar, ui.taf, ui.weatherLoaded, now)
         Spacer(Modifier.height(20.dp))
         RunwaysCard(ui)
         Boards(ui, onAircraft, ap.tz, ap.city)
@@ -95,7 +104,7 @@ fun AirportSheet(ui: AirportUi, onAircraft: (String) -> Unit, onClose: () -> Uni
 }
 
 @Composable
-private fun WeatherCard(m: Metar?, loaded: Boolean, now: Long) {
+private fun WeatherCard(m: Metar?, taf: Taf?, loaded: Boolean, now: Long) {
     val cs = MaterialTheme.colorScheme
     Surface(shape = MaterialTheme.shapes.medium, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
@@ -120,7 +129,7 @@ private fun WeatherCard(m: Metar?, loaded: Boolean, now: Long) {
                     Label("Wind")
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // Arrow points where the wind blows to.
-                        m.windDir?.let { Icon(Icons.Rounded.Navigation, null, Modifier.size(18.dp).rotate((it + 180).toFloat()), tint = cs.primary) }
+                        m.windDir?.takeIf { (m.wspd ?: 0.0) >= 1 }?.let { Icon(Icons.Rounded.Navigation, null, Modifier.size(18.dp).rotate((it + 180).toFloat()), tint = cs.primary) }
                         Text(
                             when {
                                 (m.wspd ?: 0.0) < 1 -> "Calm"
@@ -149,6 +158,11 @@ private fun WeatherCard(m: Metar?, loaded: Boolean, now: Long) {
             }
             Spacer(Modifier.height(10.dp))
             Text(m.rawOb, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = cs.onSurfaceVariant)
+            taf?.let {
+                Spacer(Modifier.height(10.dp))
+                Label("Forecast")
+                Text(it.rawTAF, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = cs.onSurfaceVariant)
+            }
         }
     }
 }

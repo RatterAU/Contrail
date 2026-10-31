@@ -11,6 +11,7 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
     private unowned let model: AppModel
 
     private var planes: [String: PlaneAnnotation] = [:]
+    private var lastHeading = 0.0
     private var airports: [String: AirportAnnotation] = [:]
     private var endpoints: [AirportAnnotation] = []
     private var scrubPin: ScrubAnnotation?
@@ -643,6 +644,8 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
     func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
         // Keep icons pointing along their track while the map rotates.
         let heading = mapView.camera.heading
+        guard heading != lastHeading else { return } // fires every frame of a pan too
+        lastHeading = heading
         for (hex, ann) in planes {
             guard let v = mapView.view(for: ann) as? PlaneView, let t = model.tracks[hex] else { continue }
             v.setRotation(t.aircraft.track.map { $0 - heading }, rotates: Shape.of(t.aircraft).rotates)

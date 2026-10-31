@@ -62,7 +62,9 @@ struct WindGrid: Equatable, Sendable {
 
     /// Grid indices (lat, lon) covering the box plus one cell all round.
     static func points(south: Double, west: Double, north: Double, east: Double, step: Double) -> [(Int, Int)] {
-        let i0 = Int(floor(max(south, -89) / step)) - 1, i1 = Int(ceil(min(north, 89) / step)) + 1
+        // Clamped to the poles: Open-Meteo answers 400 for the whole request if one latitude is past ±90.
+        let pole = Int(90 / step)
+        let i0 = max(Int(floor(max(south, -89) / step)) - 1, -pole), i1 = min(Int(ceil(min(north, 89) / step)) + 1, pole)
         let j0 = Int(floor(west / step)) - 1, j1 = Int(ceil((east < west ? east + 360 : east) / step)) + 1
         var seen = Set<Int64>()
         return (i0...i1).flatMap { i in (j0...j1).map { (i, $0) } }.filter { seen.insert(key($0.0, $0.1, step)).inserted }

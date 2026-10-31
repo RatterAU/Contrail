@@ -49,13 +49,14 @@ object FlightInsights {
     fun phaseLine(phase: Phase, a: Aircraft, route: Route?, p: FlightProgress?): String {
         val r = route?.takeIf { p?.verified == true }
         return when (phase) {
-            Phase.CLIMBING -> r?.let { "Climbing out of ${it.origin.shortName}" } ?: "Climbing through ${Fmt.altitude(a)}"
+            // Not on a step climb hours later, and "landed" only at the destination: it may be the origin of its next flight.
+            Phase.CLIMBING -> r?.takeIf { (p?.flownNm ?: 0.0) < 100 }?.let { "Climbing out of ${it.origin.shortName}" } ?: "Climbing through ${Fmt.altitude(a)}"
             Phase.CRUISING -> "Cruising at ${Fmt.altitude(a)}"
             Phase.LEVEL -> "Level at ${Fmt.altitude(a)}"
             Phase.DESCENDING -> r?.let { "Descending towards ${it.destination.shortName}" } ?: "Descending through ${Fmt.altitude(a)}"
             Phase.APPROACH -> r?.let { "On final approach into ${it.destination.shortName}" } ?: "Low and descending, likely landing"
             Phase.TAKEOFF -> "Accelerating on the runway"
-            Phase.LANDED -> r?.let { "Landed in ${it.destination.shortName}" } ?: "Just landed"
+            Phase.LANDED -> r?.takeIf { (p?.remainingNm ?: 0.0) < 5 }?.let { "Landed in ${it.destination.shortName}" } ?: "Just landed"
             Phase.TAXIING -> "Taxiing"
             Phase.PARKED -> "Parked"
         }

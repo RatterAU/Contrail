@@ -11,7 +11,7 @@ struct AirportSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 header
-                WeatherCard(metar: state?.metar, loaded: state?.weatherLoaded ?? false)
+                WeatherCard(metar: state?.metar, taf: state?.taf, loaded: state?.weatherLoaded ?? false)
                 if let state, !state.runways.isEmpty { RunwaysCard(state: state, tracks: model.tracks) }
                 boards(state)
             }
@@ -115,6 +115,7 @@ private struct BoardRowView: View {
 
 private struct WeatherCard: View {
     let metar: Metar?
+    let taf: String?
     let loaded: Bool
 
     var body: some View {
@@ -147,6 +148,10 @@ private struct WeatherCard: View {
                     }
                 }
                 Text(m.raw).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                if let taf {
+                    Text("Forecast").font(.caption).foregroundStyle(.secondary)
+                    Text(taf).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                }
             } else if loaded {
                 Label("No weather report for this airport.", systemImage: "antenna.radiowaves.left.and.right.slash").foregroundStyle(.secondary)
             } else {
@@ -178,7 +183,9 @@ private struct RunwaysCard: View {
     let tracks: [String: Track]
 
     var body: some View {
-        let active = AirportBoards.activeRunway(state.airport, state.runways, tracks.values, windDir: state.metar?.windDir)
+        // Calm reports direction 0, which says nothing about the runway.
+        let windDir = (state.metar?.windSpeed ?? 0) > 0 ? state.metar?.windDir : nil
+        let active = AirportBoards.activeRunway(state.airport, state.runways, tracks.values, windDir: windDir)
         SectionTitle("Runways")
         Card {
             ForEach(state.runways, id: \.self) { r in

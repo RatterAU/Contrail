@@ -10,6 +10,8 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.booleanOrNull
@@ -90,11 +92,12 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
         val days = f.traces.map { ref ->
             synchronized(pathCache) { pathCache[ref] } ?: run {
                 val url = traceUrl(ref) ?: return emptyList()
-                val (offset, size) = ref.split('.').let { it[3].toLong() to it[4].toLong() }
                 val pts = try {
+                    val (offset, size) = ref.split('.').let { it[3].toLong() to it[4].toLong() }
                     val res = http.get(url) { header(HttpHeaders.Range, "bytes=$offset-${offset + size - 1}") }
                     if (res.status.value != 206) return null // a full 4 GB answer would be wrong; never read it
-                    parseTrace(java.util.zip.GZIPInputStream(res.bodyAsBytes().inputStream()).readBytes().decodeToString())
+                    val bytes = res.bodyAsBytes()
+                    withContext(Dispatchers.Default) { parseTrace(java.util.zip.GZIPInputStream(bytes.inputStream()).readBytes().decodeToString()) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -113,7 +116,7 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
         synchronized(cache) { cache[hex]?.takeIf { now - it.second < CACHE_MS } }?.let { return it.first }
         val pts = try {
             val res = http.get("https://opensky-network.org/api/tracks/all?icao24=${hex.lowercase()}&time=0")
-            if (res.status.isSuccess()) parseOpenSkyTrack(res.bodyAsText(), now) else null
+            if (res.status.isSuccess()) res.bodyAsText().let { withContext(Dispatchers.Default) { parseOpenSkyTrack(it, now) } } else null
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

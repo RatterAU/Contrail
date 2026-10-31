@@ -15,7 +15,6 @@ import kotlinx.serialization.json.doubleOrNull
 @Serializable
 data class ReadsbResponse(
     @JsonNames("ac", "aircraft") val ac: List<ReadsbAircraft> = emptyList(),
-    val now: Double? = null,
 )
 
 @Serializable
@@ -77,9 +76,9 @@ val feedJson = Json {
 
 fun parseReadsb(body: String, receivedAtMs: Long): List<Aircraft> {
     val res = feedJson.decodeFromString<ReadsbResponse>(body)
-    // Feeds report "now" in ms; trust it over the phone clock only if it is plausible.
-    val now = res.now?.toLong()?.takeIf { kotlin.math.abs(it - receivedAtMs) < 10 * 60_000 } ?: receivedAtMs
-    return res.ac.mapNotNull { it.toAircraft(now) }
+    // The phone's clock, not the feed's "now": ages and dead-reckoning compare against it, so a phone a minute or two
+    // out would otherwise see every plane as long gone.
+    return res.ac.mapNotNull { it.toAircraft(receivedAtMs) }
 }
 
 fun ReadsbAircraft.toAircraft(nowMs: Long): Aircraft? {

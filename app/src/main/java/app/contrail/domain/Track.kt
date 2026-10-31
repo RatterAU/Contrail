@@ -35,6 +35,8 @@ data class Track(
 
     /** Merge a newer report into this track. Older or duplicate reports are ignored. */
     fun update(next: Aircraft, now: Long): Track {
+        // A rough position is the receiver's, up to hundreds of nm off: it never replaces a real fix.
+        if (next.source == PositionSource.ROUGH && aircraft.source != PositionSource.ROUGH) return this
         if (next.positionTime <= aircraft.positionTime) {
             return if (next.seenTime > aircraft.seenTime) copy(aircraft = aircraft.copy(seenTime = next.seenTime)) else this
         }
@@ -43,7 +45,16 @@ data class Track(
         val moved = last == null || Geo.distanceNm(last.lat, last.lon, next.lat, next.lon) > 0.05 ||
             last.onGround != next.onGround || next.positionTime - last.time > 30_000
         return copy(
-            aircraft = next,
+            // adsb.fi omits registry fields that adsb.lol sends; don't let alternating feeds blank them.
+            aircraft = next.copy(
+                callsign = next.callsign ?: aircraft.callsign,
+                registration = next.registration ?: aircraft.registration,
+                typeCode = next.typeCode ?: aircraft.typeCode,
+                description = next.description ?: aircraft.description,
+                operator = next.operator ?: aircraft.operator,
+                year = next.year ?: aircraft.year,
+                category = next.category ?: aircraft.category,
+            ),
             trail = if (moved) (trail + next.toTrailPoint()).takeLast(MAX_TRAIL) else trail,
             takeoffAt = if (aircraft.onGround && !next.onGround) next.positionTime else takeoffAt,
             landedAt = when {

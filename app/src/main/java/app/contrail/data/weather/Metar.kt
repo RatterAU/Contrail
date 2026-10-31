@@ -8,6 +8,9 @@ import io.ktor.http.isSuccess
 import app.contrail.domain.WindGrid
 import app.contrail.domain.WindLevel
 import app.contrail.domain.WindSample
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -101,8 +104,10 @@ class WeatherRepository(private val http: HttpClient) {
         val now = System.currentTimeMillis()
         synchronized(metarCache) { metarCache[icao]?.takeIf { now - it.second < 10 * 60_000 } }?.let { return it.first }
         val res = http.get("https://aviationweather.gov/api/data/metar?ids=$icao&format=json")
+        // A server error isn't "no report": throw, so it isn't cached.
+        if (!res.status.isSuccess()) throw java.io.IOException("METAR HTTP ${res.status.value}")
         // 204 = no report for this station.
-        val m = if (res.status.isSuccess() && res.status.value != 204) feedJson.decodeFromString<List<Metar>>(res.bodyAsText()).firstOrNull() else null
+        val m = if (res.status.value != 204) feedJson.decodeFromString<List<Metar>>(res.bodyAsText()).firstOrNull() else null
         synchronized(metarCache) { metarCache[icao] = m to now }
         return m
     }
@@ -128,8 +133,8 @@ class WeatherRepository(private val http: HttpClient) {
         return list
     }
 
-    private val windCache = HashMap<Long, Pair<WindSample, Long>>()
-    private var windStep = 0.0
+    /** One cache per grid step, so zooming back across a step doesn't spend the daily allowance again. */
+    private val windCache = HashMap<Double, HashMap<Long, Pair<WindSample, Long>>>()
     private var windBlockedUntil = 0L
 
     /**
@@ -139,29 +144,38 @@ class WeatherRepository(private val http: HttpClient) {
     suspend fun wind(points: List<Pair<Int, Int>>, step: Double): WindGrid {
         val now = System.currentTimeMillis()
         val have = synchronized(windCache) {
-            if (step != windStep) { windCache.clear(); windStep = step }
-            windCache.entries.removeAll { now - it.value.second > 3_600_000 }
-            windCache.keys.toSet()
+            windCache.values.forEach { c -> c.entries.removeAll { now - it.value.second > 3_600_000 } }
+            windCache.getOrPut(step) { HashMap() }.keys.toSet()
         }
         val missing = points.filter { WindGrid.key(it.first, it.second, step) !in have }.take(WindGrid.MAX_POINTS)
         if (missing.isNotEmpty() && now >= windBlockedUntil) {
             val coords = missing.map { WindGrid.latLon(it.first, it.second, step) }
             val vars = WindLevel.entries.flatMap { listOf(it.speedVar, it.dirVar) }.joinToString(",")
-            val res = http.get(
-                "https://api.open-meteo.com/v1/forecast?latitude=${coords.joinToString(",") { "%.2f".format(java.util.Locale.ROOT, it.first) }}" +
-                    "&longitude=${coords.joinToString(",") { "%.2f".format(java.util.Locale.ROOT, it.second) }}&current=$vars&wind_speed_unit=kn",
-            )
-            // Over the daily limit (429): stop asking for a while rather than hammering it.
-            if (res.status.value == 429) windBlockedUntil = now + 15 * 60_000
-            if (res.status.isSuccess()) {
-                val body = feedJson.parseToJsonElement(res.bodyAsText())
-                val rows = (body as? JsonArray)?.map { it.jsonObject } ?: listOf(body.jsonObject)
-                synchronized(windCache) {
-                    rows.zip(missing).forEach { (row, p) -> parseWind(row)?.let { windCache[WindGrid.key(p.first, p.second, step)] = it to now } }
+            try {
+                val res = http.get(
+                    "https://api.open-meteo.com/v1/forecast?latitude=${coords.joinToString(",") { "%.2f".format(java.util.Locale.ROOT, it.first) }}" +
+                        "&longitude=${coords.joinToString(",") { "%.2f".format(java.util.Locale.ROOT, it.second) }}&current=$vars&wind_speed_unit=kn",
+                )
+                // Over the daily limit (429): stop asking for a while rather than hammering it.
+                if (res.status.value == 429) windBlockedUntil = now + 15 * 60_000
+                if (res.status.isSuccess()) {
+                    val text = res.bodyAsText()
+                    val rows = withContext(Dispatchers.Default) {
+                        val body = feedJson.parseToJsonElement(text)
+                        ((body as? JsonArray)?.map { it.jsonObject } ?: listOf(body.jsonObject)).map(::parseWind)
+                    }
+                    synchronized(windCache) {
+                        val cache = windCache.getOrPut(step) { HashMap() }
+                        rows.zip(missing).forEach { (s, p) -> if (s != null) cache[WindGrid.key(p.first, p.second, step)] = s to now }
+                    }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Offline or a bad answer: fall through with what's cached.
             }
         }
-        return WindGrid(step, synchronized(windCache) { windCache.mapValues { it.value.first } })
+        return WindGrid(step, synchronized(windCache) { windCache[step].orEmpty().mapValues { it.value.first } })
     }
 
     private fun parseWind(row: JsonObject): WindSample? {

@@ -161,6 +161,13 @@ struct MapFeatureTests {
         #expect(!adelaide.contains(-35.6, 138.5))
     }
 
+    @Test func areaSeesAcrossTheAntimeridian() {
+        let fiji = Area(south: -20, west: 170, north: 0, east: 190)
+        #expect(fiji.contains(-10, 175))
+        #expect(fiji.contains(-10, -175))
+        #expect(!fiji.contains(-10, -160))
+    }
+
     func trail(_ fixes: [(Double, Double, Int)]) -> [TrailPoint] {
         var t = Track.start(one(#"{"hex":"aaaaaa","alt_baro":10000,"gs":0,"lat":0,"lon":0,"seen":0}"#).with {
             $0.lat = fixes[0].0; $0.lon = fixes[0].1; $0.altBaro = fixes[0].2; $0.positionTime = 0; $0.seenTime = 0

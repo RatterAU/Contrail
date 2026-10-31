@@ -194,6 +194,7 @@ class MapController(
             st.addSource(airports?.let { GeoJsonSource(AIRPORT_SOURCE, it) } ?: GeoJsonSource(AIRPORT_SOURCE))
             st.addSource(GeoJsonSource(ROUTE_SOURCE))
             st.addSource(GeoJsonSource(TRAIL_SOURCE))
+            st.addSource(GeoJsonSource(TAIL_SOURCE))
             st.addSource(GeoJsonSource(SCRUB_SOURCE))
             st.addSource(GeoJsonSource(AIRCRAFT_SOURCE))
             val accent = if (s.dark) "#0A84FF" else "#007AFF"
@@ -263,15 +264,17 @@ class MapController(
                     textAllowOverlap(true),
                 ).withFilter(eq(get("kind"), literal(KIND_END))),
             )
-            st.addLayer(
-                LineLayer(TRAIL_LAYER, TRAIL_SOURCE).withProperties(
-                    lineColor(toColor(get("color"))),
-                    lineWidth(get("w")),
-                    lineOpacity(0.95f),
-                    lineCap(Property.LINE_CAP_ROUND),
-                    lineJoin(Property.LINE_JOIN_ROUND),
-                ),
-            )
+            for ((layer, source) in listOf(TRAIL_LAYER to TRAIL_SOURCE, TAIL_LAYER to TAIL_SOURCE)) {
+                st.addLayer(
+                    LineLayer(layer, source).withProperties(
+                        lineColor(toColor(get("color"))),
+                        lineWidth(get("w")),
+                        lineOpacity(0.95f),
+                        lineCap(Property.LINE_CAP_ROUND),
+                        lineJoin(Property.LINE_JOIN_ROUND),
+                    ),
+                )
+            }
             st.addLayer(
                 CircleLayer(SCRUB_LAYER, SCRUB_SOURCE).withProperties(
                     circleRadius(7f),
@@ -509,9 +512,9 @@ class MapController(
     /** Last collection pushed to each source; pushing the same object again would only make MapLibre re-tile and redraw. */
     private val pushed = HashMap<String, FeatureCollection>()
 
-    fun render(aircraft: FeatureCollection, trail: FeatureCollection, route: FeatureCollection, scrub: FeatureCollection) {
+    fun render(aircraft: FeatureCollection, trail: FeatureCollection, tail: FeatureCollection, route: FeatureCollection, scrub: FeatureCollection) {
         val st = loaded() ?: return
-        for ((id, fc) in listOf(AIRCRAFT_SOURCE to aircraft, TRAIL_SOURCE to trail, ROUTE_SOURCE to route, SCRUB_SOURCE to scrub)) {
+        for ((id, fc) in listOf(AIRCRAFT_SOURCE to aircraft, TRAIL_SOURCE to trail, TAIL_SOURCE to tail, ROUTE_SOURCE to route, SCRUB_SOURCE to scrub)) {
             if (pushed[id] === fc) continue
             pushed[id] = fc
             st.getSourceAs<GeoJsonSource>(id)?.setGeoJson(fc)
@@ -532,6 +535,8 @@ class MapController(
         const val AIRCRAFT_LAYER = "aircraft-layer"
         const val TRAIL_SOURCE = "trail"
         const val TRAIL_LAYER = "trail-layer"
+        const val TAIL_SOURCE = "tail"
+        const val TAIL_LAYER = "tail-layer"
         const val ROUTE_SOURCE = "route"
         const val ROUTE_LAYER = "route-layer"
         const val ROUTE_BEHIND_LAYER = "route-behind-layer"
@@ -550,7 +555,7 @@ class MapController(
         const val HAZARD_SOURCE = "hazards"
 
         /** Shared so an empty source isn't re-pushed every frame (see [render]). */
-        private val EMPTY = FeatureCollection.fromFeatures(emptyList())
+        val EMPTY: FeatureCollection = FeatureCollection.fromFeatures(emptyList())
 
         /**
          * Milliseconds between map frames, aiming for about 1 dp of movement per frame for a fast jet (250 m/s).
@@ -636,9 +641,19 @@ class MapController(
         /** Trail as short segments, each coloured by the altitude at its start. Unselected trails are thinner. */
         fun trailFeatures(tracks: Collection<Track>, selected: Track?, now: Long): FeatureCollection {
             val features = ArrayList<Feature>()
-            for (track in tracks) addTrail(features, track, now, if (track === selected) 3.5f else 1.5f)
-            if (selected != null && tracks.none { it === selected }) addTrail(features, selected, now, 3.5f)
+            for (track in tracks) if (track !== selected) addTrail(features, track, now, 1.5f)
+            // Up to its last fix only; [tailFeatures] draws the rest, so this one stays the same object between fixes.
+            selected?.trail?.lastOrNull()?.let { addRuns(features, selected.trail.dropLast(1), it.lat, it.lon, 3.5f) }
             return if (features.isEmpty()) EMPTY else FeatureCollection.fromFeatures(features)
+        }
+
+        /** The selected trail's last stretch, from its newest fix to the plane as drawn now. */
+        fun tailFeatures(selected: Track?, now: Long): FeatureCollection {
+            val last = selected?.trail?.lastOrNull() ?: return EMPTY
+            val (lat, lon) = selected.displayPosition(now)
+            val out = ArrayList<Feature>()
+            addRuns(out, listOf(last), lat, lon, 3.5f)
+            return if (out.isEmpty()) EMPTY else FeatureCollection.fromFeatures(out)
         }
 
         /** A past flight's path, coloured by altitude like a selected plane's trail. */

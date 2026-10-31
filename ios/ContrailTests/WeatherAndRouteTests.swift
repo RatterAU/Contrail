@@ -141,6 +141,22 @@ struct WeatherLayerTests {
         #expect(abs(WindGrid.latLon(0, 190, 1).lon + 170) < 1e-9)
     }
 
+    @Test func gridNeverAsksForALatitudePastThePole() {
+        for (south, north) in [(-80.0, 80.0), (-85.0, 85.0)] {
+            for step in [20.0, 30.0] {
+                let lats = WindGrid.points(south: south, west: -180, north: north, east: 180, step: step).map { WindGrid.latLon($0.0, $0.1, step).lat }
+                #expect(lats.allSatisfy { abs($0) <= 90 }, "\(south)...\(north) at \(step)")
+            }
+        }
+    }
+
+    @Test func decimalVisibilityIsKept() throws {
+        let m = try #require(Metar(JSON.object(Data(#"{"icaoId":"EGLL","rawOb":"x","visib":2.61}"#.utf8))))
+        #expect(m.visibilityText == "4.2 km")
+        let plus = try #require(Metar(JSON.object(Data(#"{"icaoId":"EGLL","rawOb":"x","visib":"6+"}"#.utf8))))
+        #expect(plus.visibilityText == "10 km+")
+    }
+
     @Test func gridStaysWithinTheRequestBudget() {
         for (lat, lon) in [(0.5, 0.8), (4.0, 6.0), (30.0, 60.0), (160.0, 360.0)] {
             let step = WindGrid.step(latSpan: lat, lonSpan: lon)

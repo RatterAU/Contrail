@@ -6,6 +6,8 @@ enum HTTP {
     static let shared: URLSession = {
         let c = URLSessionConfiguration.default
         c.timeoutIntervalForRequest = 8
+        // The request timeout only counts silence; this bounds a response that trickles in.
+        c.timeoutIntervalForResource = 30
         c.waitsForConnectivity = false
         c.httpAdditionalHeaders = ["User-Agent": "Contrail/0.1 (iOS)"]
         c.urlCache = URLCache(memoryCapacity: 16 << 20, diskCapacity: 128 << 20)
@@ -114,12 +116,18 @@ actor FeedScheduler {
         let ordered = rotated.filter { !benched($0) } + rotated.filter(benched)
         for s in ordered {
             try Task.checkCancellation()
-            if let last = lastCall[s.name], minIntervalMs > 0 {
-                let wait = last + minIntervalMs - clock()
-                if wait > 0 { try await Task.sleep(for: .milliseconds(wait)) }
+            // The slot is claimed before waiting: the actor runs other calls during the sleep, and they must queue behind it.
+            let slot = lastCall[s.name].map { max(clock(), $0 + minIntervalMs) } ?? clock()
+            lastCall[s.name] = slot
+            let wait = slot - clock()
+            if wait > 0 {
+                do { try await Task.sleep(for: .milliseconds(wait)) } catch {
+                    // A pan restarts the poll: give the slot back, or repeated pans push every later poll out.
+                    if lastCall[s.name] == slot { lastCall[s.name] = slot - minIntervalMs }
+                    throw error
+                }
             }
             let t0 = clock()
-            lastCall[s.name] = t0
             do {
                 let r = try await call(s)
                 benchedUntil[s.name] = nil

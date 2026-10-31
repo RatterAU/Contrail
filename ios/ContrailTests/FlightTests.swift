@@ -99,6 +99,49 @@ struct FlightProgressTests {
         #expect(!p.departedEstimated)
     }
 
+    func flying(_ c: Coord, trk: Double?, vr: Double) -> Track {
+        Track.start(base.with { $0.lat = c.lat; $0.lon = c.lon; $0.track = trk; $0.baroRate = vr; $0.positionTime = 0; $0.seenTime = 0 }, now: 0)
+    }
+    var outbound: Double { Geo.bearing(adl.lat, adl.lon, syd.lat, syd.lon) }
+
+    @Test func midRouteWithoutATrackIsNotVerified() {
+        #expect(!FlightProgress.compute(flying(Geo.destination(adl.lat, adl.lon, outbound, 300), trk: nil, vr: 0), r, now: 0).verified)
+    }
+
+    @Test func nearTheEndsOnlyTheOppositeOfTheRouteFails() {
+        let past = Geo.destination(syd.lat, syd.lon, outbound, 30)
+        #expect(!FlightProgress.compute(flying(past, trk: outbound, vr: 2000), r, now: 0).verified, "just left that stop")
+        #expect(FlightProgress.compute(flying(past, trk: outbound, vr: -1500), r, now: 0).verified, "vectored for the approach")
+        let near = Geo.destination(adl.lat, adl.lon, outbound, 30)
+        let back = (outbound + 180).truncatingRemainder(dividingBy: 360)
+        #expect(!FlightProgress.compute(flying(near, trk: back, vr: -1500), r, now: 0).verified, "arriving at the listed origin")
+        #expect(FlightProgress.compute(flying(near, trk: back, vr: 2000), r, now: 0).verified, "departure procedure")
+    }
+
+    @Test func zeroSpeedAtAltitudeGivesASaneDeparture() {
+        let c = Geo.destination(adl.lat, adl.lon, outbound, 300)
+        let p = FlightProgress.compute(trackAt(c.lat, c.lon, gs: 0), r, now: 0)
+        #expect(p.verified)
+        #expect(p.departedAt! > -2 * 3_600_000)
+    }
+
+    @Test func aTakeoffFromTheFlightBeforeIsNotThisOnesDeparture() {
+        var parked = trackAt(adl.lat, adl.lon, ground: true, gs: 0)
+        parked.takeoffAt = 5_000
+        #expect(FlightProgress.compute(parked, r, now: 10_000).departedAt == nil)
+    }
+
+    @Test func phaseLinesDontClaimWhatThePositionDenies() {
+        func line(_ phase: Phase, _ t: Track) -> String {
+            FlightInsights.phaseLine(phase, t.aircraft, r, FlightProgress.compute(t, r, now: 0), Fmt())
+        }
+        let mid = Geo.destination(adl.lat, adl.lon, outbound, 300), near = Geo.destination(adl.lat, adl.lon, outbound, 30)
+        #expect(line(.climbing, trackAt(mid.lat, mid.lon)).hasPrefix("Climbing through"))
+        #expect(line(.climbing, trackAt(near.lat, near.lon)) == "Climbing out of Adelaide")
+        #expect(line(.landed, trackAt(adl.lat, adl.lon, ground: true, gs: 0)) == "Just landed")
+        #expect(line(.landed, trackAt(syd.lat, syd.lon, ground: true, gs: 0)) == "Landed in Sydney")
+    }
+
     @Test func landedAtDestination() {
         var t = trackAt(syd.lat + 0.3, syd.lon - 0.3)
         t = t.updated(with: base.with { $0.lat = syd.lat; $0.lon = syd.lon; $0.onGround = true; $0.groundSpeed = 20; $0.positionTime = 60_000; $0.seenTime = 60_000 }, now: 60_000)

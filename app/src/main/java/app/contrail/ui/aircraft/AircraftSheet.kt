@@ -66,6 +66,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import app.contrail.ContrailApp
 import app.contrail.data.enrich.AircraftInfo
 import app.contrail.data.enrich.Enrichment
@@ -113,7 +116,10 @@ fun AircraftSheet(
     val a = track.aircraft
     // Read only inside the parts that show time, so the 1 s tick doesn't recompose the whole sheet.
     val clock = remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) { while (true) { delay(1000); clock.longValue = System.currentTimeMillis() } }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(Unit) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { while (true) { clock.longValue = System.currentTimeMillis(); delay(1000) } }
+    }
     val info = enrichment?.info
     val route = FlightProgressCalc.shownRoute(track, enrichment?.route, System.currentTimeMillis(), enrichment?.legs.orEmpty())
     val airlineIcao = StaticData.now()?.airlineCode(a.callsign) ?: route?.airline?.icao // the operator flying it (QantasLink, not Qantas)

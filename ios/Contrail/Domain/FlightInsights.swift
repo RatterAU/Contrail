@@ -55,13 +55,14 @@ enum FlightInsights {
     static func phaseLine(_ phase: Phase, _ a: Aircraft, _ route: Route?, _ p: FlightProgress?, _ fmt: Fmt) -> String {
         let r = p?.verified == true ? route : nil
         switch phase {
-        case .climbing: return r.map { "Climbing out of \($0.origin.shortName)" } ?? "Climbing through \(fmt.altitude(a))"
+        // Not on a step climb hours later, and "landed" only at the destination: it may be the origin of its next flight.
+        case .climbing: return r.flatMap { (p?.flownNm ?? 0) < 100 ? "Climbing out of \($0.origin.shortName)" : nil } ?? "Climbing through \(fmt.altitude(a))"
         case .cruising: return "Cruising at \(fmt.altitude(a))"
         case .level: return "Level at \(fmt.altitude(a))"
         case .descending: return r.map { "Descending towards \($0.destination.shortName)" } ?? "Descending through \(fmt.altitude(a))"
         case .approach: return r.map { "On final approach into \($0.destination.shortName)" } ?? "Low and descending, likely landing"
         case .takeoff: return "Accelerating on the runway"
-        case .landed: return r.map { "Landed in \($0.destination.shortName)" } ?? "Just landed"
+        case .landed: return r.flatMap { (p?.remainingNm ?? 0) < 5 ? "Landed in \($0.destination.shortName)" : nil } ?? "Just landed"
         case .taxiing: return "Taxiing"
         case .parked: return "Parked"
         }

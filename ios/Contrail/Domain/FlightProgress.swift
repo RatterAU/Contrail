@@ -25,7 +25,8 @@ struct FlightProgress: Hashable, Sendable {
         case "A3", "A4", "A5", "A6": 430 // airliners
         default: 400
         }
-        if (a.altBaro ?? 0) > 20_000, let gs = a.groundSpeed { return gs }
+        // Over 150 kt only: 0 here would mean an infinite flight, and converting that to Millis traps.
+        if (a.altBaro ?? 0) > 20_000, let gs = a.groundSpeed, gs > 150 { return gs }
         return max(typical, a.groundSpeed ?? 0)
     }
 
@@ -86,13 +87,22 @@ struct FlightProgress: Hashable, Sendable {
             // Adelaide, 280 nm off), so the corridor grows with the distance.
             let onCorridor = crossTrack <= max(60, total * 0.15)
             let betweenEnds = fromOrigin + toDest <= total * 1.3 + 30
-            // Departure and arrival procedures point planes anywhere near the airports.
-            let headingOk = toDest < 60 || fromOrigin < 60 || a.track.map { Geo.angleDiff($0, Geo.bearing(p.lat, p.lon, d.lat, d.lon)) <= 75 } ?? true
+            let vr = a.verticalRate ?? 0
+            let towardsDest = a.track.map { Geo.angleDiff($0, Geo.bearing(p.lat, p.lon, d.lat, d.lon)) <= 75 } ?? false
+            let towardsOrigin = a.track.map { Geo.angleDiff($0, Geo.bearing(p.lat, p.lon, o.lat, o.lon)) <= 75 } ?? false
+            // Departure and arrival procedures point planes anywhere near the airports, so there only the opposite of
+            // the route fails: climbing away from the destination (it just left that stop) or descending into the
+            // origin (it's arriving there). Further out it must be pointing at the destination.
+            let headingOk = if toDest < 60 && fromOrigin < 60 { true }
+                else if toDest < 60 { vr <= 300 || towardsDest }
+                else if fromOrigin < 60 { vr >= -300 || !towardsOrigin }
+                else { towardsDest }
             verified = onCorridor && betweenEnds && headingOk
         }
 
         let landedHere = a.onGround && toDest < 5
-        let departed = track.takeoffAt
+        // Parked at the origin, a takeoff on record belongs to the flight before.
+        let departed = a.onGround && fromOrigin < 5 ? nil : track.takeoffAt
         let cruise = cruiseSpeedKt(track)
         // Climb-out mirrors the descent: the same speed profile, flown in reverse.
         let estDeparture = departed == nil && verified && !a.onGround ? now - flyingTimeMs(fromOrigin, cruise) : nil

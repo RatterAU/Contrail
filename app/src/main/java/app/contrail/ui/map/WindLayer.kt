@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isUnspecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.StrokeCap
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.contrail.domain.WindGrid
 import app.contrail.domain.WindLevel
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -62,13 +64,13 @@ fun WindLayer(controller: MapController, grid: WindGrid?, level: WindLevel, dark
         var last = 0L
         while (true) {
             withFrameNanos { t ->
-                // 20 fps is smooth enough for drifting streaks, at a third of the cost of 60.
-                if (t - last >= 50_000_000L) {
-                    particles.step(f, if (last == 0L) 0f else ((t - last) / 1e9f).coerceAtMost(0.1f))
-                    last = t
-                    frame.longValue = t
-                }
+                particles.step(f, if (last == 0L) 0f else ((t - last) / 1e9f).coerceAtMost(0.1f))
+                last = t
+                frame.longValue = t
             }
+            // 20 fps is smooth enough for drifting streaks, at a third of the cost of 60. Sleeping, not skipping
+            // frames, so nothing wakes at display rate; 45 ms lands on the 50 ms vsync at 60 and 120 Hz.
+            delay(45)
         }
     }
     val colour = if (dark) Color.White else Color(0xFF1B2232)
@@ -84,22 +86,24 @@ fun WindLayer(controller: MapController, grid: WindGrid?, level: WindLevel, dark
 
 /** Screen-space wind velocity (px/s) on a grid of [cell] px, bilinear between cells. Null where there's no data. */
 class ScreenWind(private val cols: Int, private val rows: Int, private val cell: Float, private val vx: FloatArray, private val vy: FloatArray, val width: Int, val height: Int) {
-    fun at(x: Float, y: Float): Pair<Float, Float>? {
+    /** [Offset] is an inline value, so this allocates nothing: it runs for every particle at 20 fps. Unspecified where there's no data. */
+    fun at(x: Float, y: Float): Offset {
         val gx = (x / cell).coerceIn(0f, cols - 1.001f)
         val gy = (y / cell).coerceIn(0f, rows - 1.001f)
         val i = gx.toInt()
         val j = gy.toInt()
         val fx = gx - i
         val fy = gy - j
-        var sx = 0f
-        var sy = 0f
-        for ((di, dj, w) in arrayOf(Triple(0, 0, (1 - fx) * (1 - fy)), Triple(1, 0, fx * (1 - fy)), Triple(0, 1, (1 - fx) * fy), Triple(1, 1, fx * fy))) {
-            val k = (j + dj) * cols + i + di
-            if (vx[k].isNaN()) return null
-            sx += vx[k] * w
-            sy += vy[k] * w
-        }
-        return sx to sy
+        val a = j * cols + i
+        val b = a + 1
+        val c = a + cols
+        val d = c + 1
+        if (vx[a].isNaN() || vx[b].isNaN() || vx[c].isNaN() || vx[d].isNaN()) return Offset.Unspecified
+        val wa = (1 - fx) * (1 - fy)
+        val wb = fx * (1 - fy)
+        val wc = (1 - fx) * fy
+        val wd = fx * fy
+        return Offset(vx[a] * wa + vx[b] * wb + vx[c] * wc + vx[d] * wd, vy[a] * wa + vy[b] * wb + vy[c] * wc + vy[d] * wd)
     }
 
     companion object {
@@ -153,13 +157,13 @@ private class Particles {
         for (i in 0 until n) {
             age[i] += dt
             val v = f.at(x[i], y[i])
-            if (v == null || age[i] > life[i] || x[i] !in 0f..f.width.toFloat() || y[i] !in 0f..f.height.toFloat()) { spawn(f, i, 0f); continue }
-            x[i] += v.first * dt
-            y[i] += v.second * dt
+            if (v.isUnspecified || age[i] > life[i] || x[i] !in 0f..f.width.toFloat() || y[i] !in 0f..f.height.toFloat()) { spawn(f, i, 0f); continue }
+            x[i] += v.x * dt
+            y[i] += v.y * dt
             // Fade in and out over each particle's life, so they don't pop.
             val bin = (sin(PI * age[i] / life[i]) * BINS).toInt().coerceIn(0, BINS - 1)
             out[bin] += Offset(x[i], y[i])
-            out[bin] += Offset(x[i] - v.first * TAIL_S, y[i] - v.second * TAIL_S)
+            out[bin] += Offset(x[i] - v.x * TAIL_S, y[i] - v.y * TAIL_S)
         }
     }
 
