@@ -136,7 +136,7 @@ Your phone talks straight to free public feeds. There's no server in between to 
 
 ## Install it
 
-There's no Play Store or App Store listing. It's a free side project. On Android you install it straight from this page in about two minutes. On iPhone it runs inside [LiveContainer](#on-an-iphone).
+There's no Play Store or App Store listing. It's a free side project. On Android you install it straight from this page in about two minutes. On iPhone you install it with [LiveContainer + SideStore or Xcode](#on-an-iphone).
 
 ### On Android
 
@@ -258,16 +258,62 @@ There's an iPhone version too, in [`ios/`](ios). It isn't a copy of the Android 
 
 </details>
 
-It isn't on the App Store. The easy way to run it is inside **[LiveContainer](https://github.com/LiveContainer/LiveContainer)**, a free app that runs other apps without a computer, without re-signing every 7 days and without using up one of the 3 app slots a free Apple ID gets.
+It isn't on the App Store. There are two ways to put it on an iPhone (iOS 26 or newer), both free:
 
-#### What you need
+- **[LiveContainer + SideStore](#option-a-livecontainer--sidestore)**: any computer, used once. After that you install and update from the phone, and the app doesn't take one of the 3 app slots a free Apple ID gets (LiveContainer takes one, once).
+- **[Xcode](#option-b-build-it-in-xcode)**: needs a Mac, and you re-run it from Xcode every 7 days.
 
-| | |
-|:--|:--|
-| **An iPhone on iOS 26 or newer** | |
-| **LiveContainer, already set up** | If it already opens other apps, you're set. If not, follow [its install guide](https://livecontainer.github.io/docs/installation) first. LiveContainer is installed with SideStore or AltStore, and those need an Apple ID. Contrail itself needs no account |
+#### Option A: LiveContainer + SideStore
 
-#### Install
+You need a computer (Mac, Windows or Linux) and a USB cable once, to put LiveContainer on the phone. After that, everything happens on the phone. Already have LiveContainer working? Skip to [Install Contrail](#install-contrail).
+
+> [!WARNING]
+> **Never delete LiveContainer to "fix" it.** Every app inside it, and all their data, is deleted with it. If it stops opening, reinstall it over the top (see [Keep it working](#keep-it-working)).
+
+##### Part 1: Put LiveContainer+SideStore on the phone
+
+1. On the computer, download the latest **[iloader](https://github.com/nab138/iloader/releases/latest)**. Older versions can't sign LiveContainer properly.
+2. Plug the iPhone in, unlock it, and tap **Trust** if asked.
+3. Open iloader, sign in with your Apple ID (a free one is fine, and the password is case-sensitive), and pick your iPhone.
+4. Choose **LiveContainer+SideStore**, and pick the **Nightly** build. As of November 2026 the stable build's SideStore closes itself when you try to sign in.
+5. On the iPhone: **Settings → General → VPN & Device Management →** your Apple ID **→ Trust**.
+6. Still in Settings: **Privacy & Security → Developer Mode → On**. The phone restarts. Confirm with your passcode.
+
+iloader then tells you to import a certificate and refresh. Don't yet: that only works after Parts 2 and 3.
+
+##### Part 2: Make a pairing file
+
+SideStore needs a *pairing file* to talk to the phone. **Use idevice_pair, not iloader's pairing file.** iloader's file holds two kinds of pairing at once, and SideStore rejects it with *"The pairing file format is ambiguous"*.
+
+1. On the computer, download **[idevice_pair](https://github.com/jkcoxson/idevice_pair/releases/latest)**.
+2. Keep the iPhone plugged in and unlocked, and pick it in idevice_pair.
+3. Choose **Remote Pairing**. Not Lockdown: it imports, but refreshing fails later with *"Broken Pipe"*.
+4. Click **Create** (it stays grey while the phone is locked), then save the file.
+5. AirDrop it to the iPhone and choose **Save to Files**.
+
+> [!CAUTION]
+> The pairing file lets a device control your iPhone. Don't share it, and delete the copy on your computer once Part 3 is done.
+
+##### Part 3: Set up SideStore
+
+1. Install **LocalDevVPN** from the App Store and tap **Connect**. SideStore can only sign and refresh while it's connected.
+2. Open LiveContainer and tap the **SideStore** button at the top left.
+3. When it asks for a pairing file, tap **Select Pairing File** and pick the file from Part 2.
+4. **Before you sign in**, open SideStore's **Settings** and:
+   - turn **On-Device Anisette** off,
+   - set the anisette server to **SideStore (New)**,
+   - tap **Reset adi.pb**.
+5. Force-close LiveContainer (swipe it away), open it again, go back into SideStore, and sign in with the same Apple ID you used in iloader.
+
+Skip step 4 and sign-in usually crashes or fails.
+
+##### Part 4: Refresh, then import the certificate
+
+1. With LocalDevVPN connected, go to SideStore's **My Apps** and tap **Refresh All**. Only **LiveContainer** is listed. That's right: SideStore and every app you add live inside it, so refreshing LiveContainer keeps all of them alive. If it asks to revoke a certificate, tap **Yes**.
+2. Force-close LiveContainer and open it again.
+3. In LiveContainer's **Settings**, tap **Import Certificate from SideStore**, then **OK**. It worked when the button changes to **Remove Certificate**.
+
+##### Install Contrail
 
 1. Copy this link:
 
@@ -284,32 +330,44 @@ It isn't on the App Store. The easy way to run it is inside **[LiveContainer](ht
 > [!TIP]
 > **Updating:** do the same again with the same link, which always points to the newest version. LiveContainer replaces the old one and keeps your settings.
 
+##### Keep it working
+
+A free Apple ID only signs apps for **7 days**, and that includes LiveContainer.
+
+- **Refresh every 3–4 days:** connect LocalDevVPN, open SideStore inside LiveContainer, **My Apps → Refresh All**. Check the counter goes back to 7 days. To automate it, make a Shortcuts automation that connects LocalDevVPN, waits a few seconds, runs LiveContainer's **Refresh All Apps** action, then disconnects.
+- **If a refresh made a new certificate**, import it again (**Settings → Import Certificate from SideStore**). Otherwise the apps inside won't open, even though LiveContainer does.
+- **Write down the date you ran iloader.** There's a [known bug](https://github.com/LiveContainer/LiveContainer/issues/1243) where LiveContainer still expires 7 days after that, even though SideStore said it refreshed.
+- **If LiveContainer won't open:** plug the phone in and run iloader again with the same Apple ID and the same build. It installs over the top and your apps survive. Then repeat Part 4.
+
 <details>
-<summary><b>If LiveContainer says "JIT-less mode is required" or asks for a certificate</b></summary>
+<summary><b>If something goes wrong</b></summary>
 
 <br>
 
-That's LiveContainer's own one-time setup, not something about Contrail. On iOS 26 it signs every app it runs with the certificate LiveContainer itself was installed with, so it needs a copy of that certificate:
-
-- **Installed LiveContainer with SideStore or AltStore** (or the *LiveContainer+SideStore* build): in LiveContainer's **Settings**, tap **Import Certificate From SideStore** (or *AltStore*, or *Built-in SideStore*). That store has to be signed in at that moment.
-- **Installed it another way** (Sideloadly, AltStore, Xcode): export the certificate from the Mac that installed it. In Xcode, open **Settings → Accounts**, select your team, click **Manage Certificates…**, right-click the *Apple Development* certificate and choose **Export Certificate**, then set a password. Zip the `.p12` file before AirDropping it (iOS swallows a bare `.p12` as a profile), unzip it in Files, then in LiveContainer go to **Settings → Import Certificate** and enter that password. It must be the certificate of the same Apple ID that installed LiveContainer.
-
-Once that's done, every app in LiveContainer, Contrail included, opens without asking again. **Settings → JIT-Less Mode Diagnose** shows whether it's set up; **Test JIT-Less Mode** should pass.
+| Problem | Fix |
+|:--|:--|
+| SideStore closes the moment you sign in | You're on the stable build, or skipped Part 3 step 4. Install the Nightly with iloader over the top, then do Part 3 |
+| No **User Customizations** or anisette settings in SideStore | Same: that's the stable build. Use the Nightly |
+| *"The pairing file format is ambiguous"* | That's iloader's pairing file. Make one with idevice_pair (Part 2) |
+| Can't tap **Continue** on SideStore's pairing file screen | It needs a file selected first. **Set Up Later** works too, but nothing refreshes until you add one |
+| *"Broken Pipe"* when refreshing | The pairing file is Lockdown. Make a **Remote Pairing** one |
+| Refresh fails or hangs | Connect LocalDevVPN first |
+| *"Certificate not found, did you log into built-in SideStore?"* | Sign in to SideStore first (Part 3). Or in SideStore **Settings → Export Signing Certificate...**, then LiveContainer **Settings → Import Certificate** |
+| LiveContainer opens but Contrail won't | Re-import the certificate (Part 4, step 3). **Settings → JIT-Less Mode Diagnose** shows whether it's set up |
+| LiveContainer won't open at all | Its 7 days ran out. Run iloader again, over the top. Don't delete it |
+| Grey home-screen icon after AirDropping the `.ipa` | iOS tried to install it as a normal app. Delete that icon and use **Install from URL** instead |
 
 </details>
 
-<details>
-<summary><b>Or build it yourself in Xcode</b></summary>
 
-<br>
+#### Option B: Build it in Xcode
 
 1. Install [Xcode](https://apps.apple.com/app/xcode/id497799835), which is free.
 2. Download this repo and open `ios/Contrail.xcodeproj`.
 3. Plug in your iPhone, pick it as the destination, set your Apple ID as the signing team, and press Run.
+4. On the iPhone: **Settings → General → VPN & Device Management →** your Apple ID **→ Trust**, then **Settings → Privacy & Security → Developer Mode → On** if it asks.
 
 With a free Apple ID, the app has to be re-run from Xcode every 7 days, and you can have at most 3 such apps on the phone at once.
-
-</details>
 
 <sub>The project is generated from `ios/project.yml` by [XcodeGen](https://github.com/yonaskolb/XcodeGen). You only need it if you change that file.</sub>
 
