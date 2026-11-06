@@ -28,6 +28,10 @@ actor EnrichmentService {
             if route == nil, let callsign {
                 if let r = await EnrichmentService.retrying({ try await EnrichmentService.callsignRoute(callsign) }) { route = r } else { routeFailed = true }
             }
+            // The route goes out first; a slow photo site never holds it up.
+            if callsign != nil {
+                await partial?(Enrichment(info: info, route: route, photos: [fallback].compactMap { $0 }, legsPending: true))
+            }
             let p = await photos
             if callsign != nil {
                 await partial?(Enrichment(info: info, route: route, photos: p.isEmpty ? [fallback].compactMap { $0 } : p, legsPending: true))
@@ -154,17 +158,19 @@ actor EnrichmentService {
             }
     }
 
-    /// adsb.lol's legs for a callsign; none if it's unknown (404). Throws when it couldn't answer (429, 5xx, offline).
+    /// adsb.lol's legs for a callsign; none if it's unknown (404). Throws when it couldn't answer (5xx, offline).
+    /// The static file adsb.lol's deprecated `/api/0/route/` redirects to, after 6-9 s; direct it takes under half a second.
     private static func legs(_ callsign: String) async throws -> [Route] {
         do {
-            let (data, _) = try await HTTP.get(url("https://api.adsb.lol/api/0/route/\(path(callsign))")!)
+            let cs = path(callsign)
+            let (data, _) = try await HTTP.get(url("https://vrs-standing-data.adsb.lol/routes/\(cs.prefix(2))/\(cs).json")!)
             return parseAdsbLolLegs(data)
         } catch let e as HTTP.Status where e.code == 404 {
             return []
         }
     }
 
-    /// adsb.lol `/api/0/route/{callsign}`: its `_airports` in flight order, as one route per leg.
+    /// adsb.lol's VRS standing-data route file: its `_airports` in flight order, as one route per leg.
     static func parseAdsbLolLegs(_ data: Data) -> [Route] {
         guard let o = try? JSON.object(data), let cs = o.string("callsign") else { return [] }
         let stops: [Airport] = ((o["_airports"] as? [JSONObject]) ?? []).compactMap { a in

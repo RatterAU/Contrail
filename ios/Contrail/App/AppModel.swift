@@ -285,7 +285,7 @@ final class AppModel {
     }
 
     private func showPartial(_ hex: String, _ e: Enrichment) {
-        guard selectedHex == hex, details == nil else { return }
+        guard selectedHex == hex, details == nil || details?.legsPending == true else { return }
         details = e
         map.selectionChanged()
     }

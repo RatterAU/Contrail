@@ -79,7 +79,7 @@ private val CREDITS = listOf(
     "adsb.lol" to "Live aircraft positions (ODbL)",
     "adsb.fi" to "Live aircraft positions",
     "adsbdb" to "Aircraft details and routes",
-    "adsb.lol routes" to "Route legs for multi-stop flights (ODbL)",
+    "adsb.lol routes" to "Route legs from VRS standing data (CC0)",
     "adsb.lol history" to "Past flights, from its daily open data (ODbL)",
     "OpenSky Network" to "The path flown before the app saw the plane",
     "airport-data.com" to "Aircraft photos, credited to each photographer",

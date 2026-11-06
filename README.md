@@ -453,9 +453,10 @@ All sources are free and keyless. None of them needed a sign-up.
 | What | From |
 |:--|:--|
 | Live positions | [adsb.lol](https://adsb.lol) (ODbL) and [adsb.fi](https://adsb.fi), fed by volunteer receivers |
-| Aircraft details and routes | [adsbdb](https://www.adsbdb.com), plus multi-stop route legs from [adsb.lol](https://adsb.lol) |
+| Aircraft details and routes | [adsbdb](https://www.adsbdb.com), plus multi-stop route legs from [VRS standing data](https://github.com/vradarserver/standing-data) (CC0), served by [adsb.lol](https://adsb.lol) |
+| Routes seen flown lately | This repo's [daily job](.github/workflows/history.yml): routes each flight number was seen flying at least twice in the last 14 days, served from GitHub Pages |
 | Flown paths | [OpenSky Network](https://opensky-network.org) |
-| Past flights | [adsb.lol](https://github.com/adsblol) daily history (ODbL), processed by this repo's [daily job](.github/workflows/history.yml) and served from GitHub Pages under the same licence |
+| Past flights | [adsb.lol](https://github.com/adsblol) daily history (ODbL), processed by this repo's [daily job](.github/workflows/history.yml) and served from GitHub Pages under the same licence. Scheduled ends for unseen take-offs and landings from [VRS standing data](https://github.com/vradarserver/standing-data) (CC0) |
 | Aircraft photos | [airport-data.com](https://www.airport-data.com), credited to each photographer |
 | Airline logos | [Jxck-S/airline-logos](https://github.com/Jxck-S/airline-logos), [sexym0nk3y/airline-logos](https://github.com/sexym0nk3y/airline-logos) |
 | Airport weather | [aviationweather.gov](https://aviationweather.gov) |
@@ -463,7 +464,7 @@ All sources are free and keyless. None of them needed a sign-up.
 | Satellite clouds | [NASA GIBS](https://earthdata.nasa.gov/gibs): Himawari, GOES-West and GOES-East |
 | Hazard warnings | International SIGMETs from [aviationweather.gov](https://aviationweather.gov) |
 | Wind | [Open-Meteo](https://open-meteo.com) |
-| Maps | [OpenFreeMap](https://openfreemap.org) and [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors; satellite by [EOX](https://maps.eox.at) |
+| Maps | Android: [OpenFreeMap](https://openfreemap.org) and [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors; satellite by [EOX](https://maps.eox.at) (Sentinel-2 cloudless). iPhone: Apple Maps |
 | Airports, runways, airlines | [OurAirports](https://ourairports.com) (public domain), [OpenFlights](https://openflights.org) (ODbL), bundled in the app |
 
 Not affiliated with or endorsed by any airline, airport or data provider. Photos remain the property of their photographers.

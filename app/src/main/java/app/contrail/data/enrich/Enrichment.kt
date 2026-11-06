@@ -101,6 +101,8 @@ class EnrichmentRepository(private val http: HttpClient) {
                 // adsbdb rejects the whole request when it doesn't know the airframe (VOZ092's 7cad46), route included.
                 var routeFailed = false
                 val route = listed ?: callsign?.let { cs -> retrying { routeOrThrow(cs) }.also { routeFailed = it == null }?.getOrNull() }
+                // The route goes out first; a slow photo site never holds it up.
+                if (callsign != null && !photos.isCompleted && !legs.isCompleted) partial(Enrichment(info, route, listOfNotNull(fallbackPhoto), legsPending = true))
                 val pics = photos.await().ifEmpty { listOfNotNull(fallbackPhoto) }
                 if (callsign != null && !legs.isCompleted) partial(Enrichment(info, route, pics, legsPending = true))
                 val lol = legs.await()
@@ -191,9 +193,13 @@ class EnrichmentRepository(private val http: HttpClient) {
         return parseSeenRoutes(text, callsign, static.airlineForCallsign(callsign), static::airport)
     }
 
-    /** Empty when adsb.lol doesn't know the callsign (404); throws when it couldn't answer (429, 5xx, offline). */
+    /**
+     * Empty when the callsign is unknown (404); throws when it couldn't answer (5xx, offline). The static file that
+     * adsb.lol's deprecated `/api/0/route/` redirects to, after 6-9 s; fetched directly it takes under half a second.
+     */
     private suspend fun adsbLolLegs(callsign: String): List<Route> {
-        val res = http.get("https://api.adsb.lol/api/0/route/${callsign.encodeURLPathPart()}")
+        val cs = callsign.encodeURLPathPart()
+        val res = http.get("https://vrs-standing-data.adsb.lol/routes/${cs.take(2)}/$cs.json")
         if (res.status == HttpStatusCode.NotFound) return emptyList()
         if (!res.status.isSuccess()) throw java.io.IOException("adsb.lol ${res.status.value}")
         return parseAdsbLolLegs(res.bodyAsText())
@@ -224,7 +230,7 @@ fun parseSeenRoutes(text: String, callsign: String, airline: Airline?, airport: 
         .mapNotNull { c -> Route(callsign, null, airline, airport(c[1]) ?: return@mapNotNull null, airport(c[2]) ?: return@mapNotNull null) }
         .toList()
 
-/** adsb.lol `/api/0/route/{callsign}`: its `_airports` in flight order, as one route per leg. */
+/** adsb.lol's VRS standing-data route file: its `_airports` in flight order, as one route per leg. */
 fun parseAdsbLolLegs(json: String): List<Route> {
     val r = feedJson.decodeFromString<AdsbLolRoute>(json)
     val static = StaticData.now()
