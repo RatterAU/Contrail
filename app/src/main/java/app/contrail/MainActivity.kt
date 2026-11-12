@@ -8,6 +8,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import app.contrail.domain.Fmt
 import app.contrail.ui.map.MapScreen
 import app.contrail.ui.map.MapViewModel
 import app.contrail.ui.theme.ContrailTheme
@@ -24,5 +25,10 @@ class MainActivity : ComponentActivity() {
                 MapScreen(vm, dark)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Fmt.system24h = android.text.format.DateFormat.is24HourFormat(this) // may have changed in system settings
     }
 }

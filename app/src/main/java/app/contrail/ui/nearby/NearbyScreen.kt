@@ -78,7 +78,7 @@ fun NearbyScreen(
                         Text("Finding your location…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     items.isEmpty() -> Text(
-                        "No aircraft within 60 nm right now.",
+                        "No aircraft within ${Fmt.nm(60.0)} right now.",
                         modifier = Modifier.padding(24.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -174,6 +174,6 @@ private fun Arrow(bearing: Double, heading: () -> Double?, sizeDp: Int, onCard: 
         Modifier.size(sizeDp.dp).background(if (onCard) Color.White.copy(alpha = 0.2f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Rounded.Navigation, "Direction", Modifier.size((sizeDp * 0.55).dp).graphicsLayer { rotationZ = angle.value }, tint = if (onCard) Color.White else MaterialTheme.colorScheme.primary)
+        Icon(Icons.Rounded.Navigation, null, Modifier.size((sizeDp * 0.55).dp).graphicsLayer { rotationZ = angle.value }, tint = if (onCard) Color.White else MaterialTheme.colorScheme.primary)
     }
 }

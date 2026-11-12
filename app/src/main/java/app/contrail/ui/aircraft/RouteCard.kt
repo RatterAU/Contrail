@@ -140,7 +140,7 @@ private fun Endpoint(a: Airport, align: Alignment.Horizontal, modifier: Modifier
 @Composable
 private fun TimeBlock(label: String, big: String, value: Pair<String, String?>?, align: Alignment.Horizontal, modifier: Modifier) {
     val cs = MaterialTheme.colorScheme
-    Column(modifier, horizontalAlignment = align) {
+    Column(modifier.semantics(mergeDescendants = true) {}, horizontalAlignment = align) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant)
         Text(big, style = MaterialTheme.typography.titleLarge.merge(Readout), maxLines = 1)
         value?.let { (time, zone) ->

@@ -224,7 +224,7 @@ private fun Boards(ui: AirportUi, onAircraft: (String) -> Unit, tz: String?, cit
     val rows = if (tab == 0) boards.arrivals else boards.departures
     InsetGroup(
         cell = MaterialTheme.colorScheme.surfaceContainerHigh,
-        footer = "Built live from aircraft within 250 nm. There's no published schedule, so flights not yet airborne or out of range don't appear.",
+        footer = "Built live from aircraft within ${Fmt.nm(250.0)}. There's no published schedule, so flights not yet airborne or out of range don't appear.",
     ) {
         if (rows.isEmpty()) row {
             Text(

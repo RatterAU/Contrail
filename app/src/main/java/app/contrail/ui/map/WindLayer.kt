@@ -35,7 +35,8 @@ import kotlin.random.Random
  * Wind as drifting streaks, Windy-style. The field is sampled once per camera stop on a coarse screen grid
  * (one projection call per cell), and particles move in screen space, so a frame costs no map calls.
  * Particles hide while the camera moves, while [covered] (a page covers the map, or following a plane moves the
- * map every frame), and while the phone is running hot.
+ * map every frame), and while the phone is running hot. With animations turned off in the phone's accessibility
+ * settings the streaks are drawn once and stay still, which still shows the wind's direction.
  */
 @Composable
 fun WindLayer(controller: MapController, grid: WindGrid?, level: WindLevel, dark: Boolean, covered: Boolean, modifier: Modifier = Modifier) {
@@ -61,6 +62,11 @@ fun WindLayer(controller: MapController, grid: WindGrid?, level: WindLevel, dark
         val f = field ?: return@LaunchedEffect
         if (paused) return@LaunchedEffect
         particles.reset(f, density)
+        if (controller.reduceMotion) {
+            particles.step(f, 0f)
+            frame.longValue++
+            return@LaunchedEffect
+        }
         var last = 0L
         while (true) {
             withFrameNanos { t ->

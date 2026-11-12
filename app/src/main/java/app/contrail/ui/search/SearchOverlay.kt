@@ -1,5 +1,11 @@
 package app.contrail.ui.search
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -72,7 +78,7 @@ fun SearchOverlay(
         Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
             Row(Modifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(
-                    Modifier.weight(1f).height(40.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp)).padding(horizontal = 10.dp),
+                    Modifier.weight(1f).heightIn(min = 40.dp).background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp)).padding(start = 10.dp, end = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(Icons.Rounded.Search, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -86,13 +92,13 @@ fun SearchOverlay(
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Search),
-                            modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                            modifier = Modifier.fillMaxWidth().focusRequester(focus).semantics { contentDescription = "Search flights and airports" },
                         )
                     }
                     if (q.isNotEmpty()) {
                         Icon(
                             Icons.Rounded.Cancel, "Clear",
-                            Modifier.size(18.dp).clickable { q = ""; onQuery("") },
+                            Modifier.clip(CircleShape).clickable(role = Role.Button) { q = ""; onQuery("") }.padding(10.dp).size(18.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }

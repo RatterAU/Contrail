@@ -1,5 +1,10 @@
 package app.contrail.ui.theme
 
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.sp
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -93,12 +98,12 @@ fun Grabber(modifier: Modifier = Modifier) {
 @Composable
 fun LargeTitle(title: String, onDone: () -> Unit, modifier: Modifier = Modifier, action: @Composable RowScope.() -> Unit = {}) {
     Column(modifier.statusBarsPadding()) {
-        Row(Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             action()
             Spacer(Modifier.weight(1f))
             TextAction("Done", onDone, bold = true)
         }
-        Text(title, style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp))
+        Text(title, style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp).semantics { heading() })
     }
 }
 
@@ -131,7 +136,7 @@ fun InsetGroup(
     if (rows.isEmpty()) return
     Column(modifier.fillMaxWidth().padding(bottom = 20.dp)) {
         header?.let {
-            Text(it, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+            Text(it, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp).semantics { heading() })
         }
         Column(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(cell)) {
             rows.forEachIndexed { i, r ->
@@ -164,7 +169,7 @@ fun ValueRow(label: String, value: String) {
 @Composable
 fun NavRow(icon: ImageVector, tile: Color, title: String, subtitle: String? = null, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).heightIn(min = 52.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).heightIn(min = 52.dp).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconTile(icon, tile)
@@ -219,8 +224,10 @@ fun IosSwitch(checked: Boolean) {
 @Composable
 fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val dark = isDark
+    // Taller with the system font size (to a point); labels then shrink to fit their segment rather than clip.
+    val height = 34.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.5f)
     BoxWithConstraints(
-        modifier.fillMaxWidth().height(34.dp)
+        modifier.fillMaxWidth().height(height)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = if (dark) 0.7f else 1f), RoundedCornerShape(9.dp))
             .padding(2.dp),
     ) {
@@ -238,7 +245,10 @@ fun Segmented(options: List<String>, selected: Int, onSelect: (Int) -> Unit, mod
                     Modifier.weight(1f).height(h).selectable(selected = i == selected, role = Role.Tab) { onSelect(i) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(o, style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (i == selected) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Medium), maxLines = 1)
+                    Text(
+                        o, style = MaterialTheme.typography.labelMedium.copy(fontWeight = if (i == selected) androidx.compose.ui.text.font.FontWeight.SemiBold else androidx.compose.ui.text.font.FontWeight.Medium),
+                        maxLines = 1, autoSize = TextAutoSize.StepBased(8.sp, 13.sp, 0.5.sp), modifier = Modifier.padding(horizontal = 2.dp),
+                    )
                 }
             }
         }
@@ -252,7 +262,7 @@ fun CapsuleButton(text: String, icon: ImageVector?, onClick: () -> Unit, modifie
     val bg by animateColorAsState(if (filled) cs.primary else cs.primary.copy(alpha = 0.15f), label = "bg")
     val fg by animateColorAsState(if (filled) cs.onPrimary else cs.primary, label = "fg")
     Row(
-        modifier.clip(CircleShape).background(bg).clickable(role = Role.Button, onClick = onClick).height(40.dp).padding(horizontal = 16.dp),
+        modifier.clip(CircleShape).background(bg).clickable(role = Role.Button, onClick = onClick).heightIn(min = 40.dp).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {

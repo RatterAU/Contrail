@@ -32,6 +32,14 @@ class MapRenderTest {
         assertTrue(gc.zipWithNext().all { (a, b) -> kotlin.math.abs(b.longitude() - a.longitude()) < 5 })
     }
 
+    @Test fun followingAPlaneRestartsPollingOnlyWhenTheViewReallyMoves() {
+        val v = app.contrail.ui.map.Viewport(-34.9, 138.6, 20, 9.0)
+        // A followed jet covers ~0.01 nm between camera stops: the same view. Two miles on, or zoomed, it's a new one.
+        assertTrue(v.sameView(v.copy(lat = -34.9002)))
+        assertTrue(!v.sameView(v.copy(lat = -34.85)))
+        assertTrue(!v.sameView(v.copy(radiusNm = 40)))
+    }
+
     @Test fun frameRateFollowsZoom() {
         // Zoomed in on a city, planes visibly move: fast frames. Zoomed out to a continent: slow frames.
         assertEquals(100L, MapController.frameIntervalMs(14.0, -35.0))

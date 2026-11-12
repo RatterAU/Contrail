@@ -1,5 +1,9 @@
 package app.contrail.ui.map
 
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -91,7 +95,7 @@ fun LayersSheet(prefs: MapPrefs, onChange: ((MapPrefs) -> MapPrefs) -> Unit) {
 @Composable
 private fun SheetTitle(text: String, action: @Composable () -> Unit = {}) {
     Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 4.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+        Text(text, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f).semantics { heading() })
         action()
     }
 }
@@ -168,7 +172,18 @@ private fun IosRangeSlider(value: ClosedFloatingPointRange<Float>, max: Float, s
                 val v = toValue(c.position.x)
                 change(if (dragStart) v.coerceAtMost(current.endInclusive)..current.endInclusive else current.start..v.coerceAtLeast(current.start))
             }
-        }.semantics { contentDescription = "Altitude range" },
+        }.semantics {
+            contentDescription = "Altitude range"
+            stateDescription = "${Fmt.feet(value.start.roundToInt())} to ${Fmt.feet(value.endInclusive.roundToInt())}"
+            // TalkBack can't drag a knob: each end steps from the actions menu instead.
+            fun act(label: String, next: () -> ClosedFloatingPointRange<Float>) = CustomAccessibilityAction(label) { change(next()); done(); true }
+            customActions = listOf(
+                act("Raise lowest") { (current.start + step).coerceAtMost(current.endInclusive)..current.endInclusive },
+                act("Lower lowest") { (current.start - step).coerceAtLeast(0f)..current.endInclusive },
+                act("Raise highest") { current.start..(current.endInclusive + step).coerceAtMost(max) },
+                act("Lower highest") { current.start..(current.endInclusive - step).coerceAtLeast(current.start) },
+            )
+        },
         contentAlignment = Alignment.CenterStart,
     ) {
         val travel = maxWidth - 28.dp

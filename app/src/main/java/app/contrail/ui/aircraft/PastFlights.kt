@@ -1,5 +1,7 @@
 package app.contrail.ui.aircraft
 
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -166,8 +168,8 @@ private fun Summary(list: List<PastFlight>) {
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f))
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
-                Text(value, style = MaterialTheme.typography.titleMedium.merge(Numeric), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text(value, style = MaterialTheme.typography.titleMedium.merge(Numeric), maxLines = 1, autoSize = TextAutoSize.StepBased(10.sp, 17.sp, 0.5.sp))
+                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, autoSize = TextAutoSize.StepBased(8.sp, 12.sp, 0.5.sp))
             }
         }
     }

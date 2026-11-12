@@ -10,7 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class UnitsTest {
-    @After fun reset() { Fmt.units = Units() }
+    @After fun reset() { Fmt.units = Units(); Fmt.system24h = null }
 
     @Test fun aviationDefaults() {
         Fmt.units = Units(distance = DistanceUnit.NM)
@@ -28,6 +28,17 @@ class UnitsTest {
         assertEquals("9.3 km", Fmt.nm(5.0))
         assertEquals("−5.1 m/s", Fmt.verticalRate(-1_000.0))
         assertEquals("Level", Fmt.verticalRate(30.0))
+    }
+
+    @Test fun automaticClockFollowsThePhonesSetting() {
+        val t = java.time.LocalTime.of(15, 5)
+        Fmt.system24h = true
+        assertEquals("15:05", Fmt.time(t))
+        Fmt.system24h = false
+        assertEquals("3:05", Fmt.time(t).take(4))
+        // An explicit choice in Settings wins over the phone's.
+        Fmt.units = Units(clock = app.contrail.domain.ClockStyle.H24)
+        assertEquals("15:05", Fmt.time(t))
     }
 
     @Test fun imperialSpeedAndDistance() {

@@ -116,7 +116,10 @@ private const val SATELLITE_STYLE = """
  "layers":[{"id":"bg","type":"background","paint":{"background-color":"#0B0F1A"}},{"id":"s2","type":"raster","source":"s2"}]}
 """
 
-data class Viewport(val lat: Double, val lon: Double, val radiusNm: Int, val zoom: Double)
+data class Viewport(val lat: Double, val lon: Double, val radiusNm: Int, val zoom: Double) {
+    /** True when [o] shows much the same area, so polling it afresh would fetch the same planes. */
+    fun sameView(o: Viewport) = abs(o.radiusNm - radiusNm) <= radiusNm * 0.1 && Geo.distanceNm(lat, lon, o.lat, o.lon) <= radiusNm * 0.1
+}
 
 /** Owns the MapLibre map: style, sprites, sources and layers. All calls on the main thread. */
 class MapController(
@@ -178,6 +181,9 @@ class MapController(
     }
 
     private fun loaded() = style?.takeIf { it.isFullyLoaded }
+
+    /** "Remove animations" in the phone's accessibility settings: the camera jumps instead of flying. */
+    val reduceMotion get() = android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
 
     fun setStyle(s: MapStyle, locationAllowed: Boolean, onReady: () -> Unit = {}) {
         if (s == currentStyle) return
@@ -476,14 +482,15 @@ class MapController(
     fun moveTo(lat: Double, lon: Double, zoom: Double? = null, animate: Boolean = true) {
         val pos = CameraPosition.Builder().target(LatLng(lat, lon)).apply { zoom?.let { zoom(it) } }.build()
         val u = CameraUpdateFactory.newCameraPosition(pos)
-        if (animate) map.animateCamera(u, 700) else map.moveCamera(u)
+        if (animate && !reduceMotion) map.animateCamera(u, 700) else map.moveCamera(u)
     }
 
     /** Frame all [points], leaving [padding] (left, top, right, bottom px) clear for the sheet and controls. */
     fun fit(points: List<LatLng>, padding: IntArray) {
         if (points.size < 2) return
         val b = LatLngBounds.Builder().includes(points).build()
-        map.animateCamera(CameraUpdateFactory.newLatLngBounds(b, padding[0], padding[1], padding[2], padding[3]), 900)
+        val u = CameraUpdateFactory.newLatLngBounds(b, padding[0], padding[1], padding[2], padding[3])
+        if (reduceMotion) map.moveCamera(u) else map.animateCamera(u, 900)
     }
 
     fun viewport(): Viewport? {

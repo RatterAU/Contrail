@@ -116,7 +116,11 @@ class FlightHistory(private val http: HttpClient, private val clock: () -> Long 
         synchronized(cache) { cache[hex]?.takeIf { now - it.second < CACHE_MS } }?.let { return it.first }
         val pts = try {
             val res = http.get("https://opensky-network.org/api/tracks/all?icao24=${hex.lowercase()}&time=0")
-            if (res.status.isSuccess()) res.bodyAsText().let { withContext(Dispatchers.Default) { parseOpenSkyTrack(it, now) } } else null
+            when {
+                res.status.isSuccess() -> res.bodyAsText().let { withContext(Dispatchers.Default) { parseOpenSkyTrack(it, now) } }
+                res.status.value == 404 -> null // no track known for this plane: an answer, cached below
+                else -> return null // rate-limited or down: not an answer
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

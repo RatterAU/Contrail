@@ -44,7 +44,9 @@ private val Night = darkColorScheme(
     onBackground = Color.White,
     surface = Color.Black,
     onSurface = Color.White,
-    surfaceVariant = Color(0xFF2C2C2E),
+    // One step off surfaceContainerHigh on purpose: Material picks a Surface's text colour by matching its fill
+    // against these roles in order, and an equal surfaceVariant made every card's main text the secondary grey.
+    surfaceVariant = Color(0xFF2C2C2F),
     onSurfaceVariant = Color(0xFF8E8E93),
     surfaceContainerLowest = Color.Black,
     surfaceContainerLow = Color(0xFF1C1C1E),

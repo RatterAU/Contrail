@@ -68,8 +68,11 @@ object Fmt {
         return String.format(Locale.US, "%s%,d ft/min", sign, abs(r))
     }
 
-    fun time(t: TemporalAccessor): String = when (units.clock) {
-        ClockStyle.SYSTEM -> DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+    /** The phone's own 12/24-hour switch, which java.time's locale formats ignore. Null off a device (tests). */
+    @Volatile var system24h: Boolean? = null
+
+    fun time(t: TemporalAccessor): String = when (units.clock.takeIf { it != ClockStyle.SYSTEM } ?: system24h?.let { if (it) ClockStyle.H24 else ClockStyle.H12 }) {
+        null, ClockStyle.SYSTEM -> DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
         ClockStyle.H12 -> DateTimeFormatter.ofPattern("h:mm a")
         ClockStyle.H24 -> DateTimeFormatter.ofPattern("HH:mm")
     }.format(t)

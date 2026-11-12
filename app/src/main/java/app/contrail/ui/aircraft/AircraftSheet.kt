@@ -1,5 +1,8 @@
 package app.contrail.ui.aircraft
 
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.heightIn
 import android.graphics.Bitmap
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -37,7 +40,7 @@ import androidx.compose.material.icons.rounded.NearMe
 import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material.icons.rounded.Straight
 import androidx.compose.material.icons.rounded.Thermostat
-import androidx.compose.material.icons.rounded.TrendingFlat
+import androidx.compose.material.icons.automirrored.rounded.TrendingFlat
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material.icons.rounded.NorthEast
 import androidx.compose.material.icons.rounded.UnfoldMore
@@ -231,7 +234,7 @@ private fun Tag(text: String, color: Color) {
 private fun Phase.icon(): ImageVector = when (this) {
     Phase.CLIMBING, Phase.TAKEOFF -> Icons.Rounded.FlightTakeoff
     Phase.DESCENDING, Phase.APPROACH, Phase.LANDED -> Icons.Rounded.FlightLand
-    Phase.CRUISING, Phase.LEVEL -> Icons.Rounded.TrendingFlat
+    Phase.CRUISING, Phase.LEVEL -> Icons.AutoMirrored.Rounded.TrendingFlat
     Phase.TAXIING -> Icons.Rounded.Straight
     Phase.PARKED -> Icons.Rounded.LocalParking
 }
@@ -250,7 +253,7 @@ private fun PhasePill(track: Track, route: Route?, now: () -> Long) {
     val phase = FlightInsights.phase(track, route?.let { FlightProgressCalc.compute(track, it, t) }, t)
     val tint = phase.tint()
     Row(
-        Modifier.height(36.dp).clip(CircleShape).background(tint.copy(alpha = 0.15f)).padding(horizontal = 12.dp),
+        Modifier.heightIn(min = 36.dp).clip(CircleShape).background(tint.copy(alpha = 0.15f)).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(phase.icon(), null, Modifier.size(16.dp), tint = tint)
@@ -279,7 +282,8 @@ private fun Instruments(a: Aircraft) {
 
 @Composable
 private fun RowScope.Readout(label: String, value: String, dot: Color? = null, weight: Float = 1f) {
-    Column(Modifier.weight(weight).padding(horizontal = 10.dp)) {
+    // One spoken item per readout ("Altitude · ft, 35,000"), and both lines shrink to fit at large font sizes.
+    Column(Modifier.weight(weight).padding(horizontal = 10.dp).semantics(mergeDescendants = true) {}) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             dot?.let {
                 Box(Modifier.size(7.dp).background(it, CircleShape))
@@ -287,10 +291,10 @@ private fun RowScope.Readout(label: String, value: String, dot: Color? = null, w
             }
             // The unit sits with the label ("Climb · fpm") so the number gets the column's full width.
             val unit = value.substringAfter(' ', "")
-            Text(if (unit.isEmpty()) label else "$label · $unit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(if (unit.isEmpty()) label else "$label · $unit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, autoSize = TextAutoSize.StepBased(7.sp, 12.sp, 0.5.sp))
         }
         Spacer(Modifier.height(2.dp))
-        Text(value.substringBefore(' '), style = Readout.copy(fontSize = 20.sp), maxLines = 1)
+        Text(value.substringBefore(' '), style = Readout, maxLines = 1, autoSize = TextAutoSize.StepBased(11.sp, 20.sp, 0.5.sp))
     }
 }
 
@@ -386,7 +390,7 @@ internal fun FactGrid(facts: List<Pair<String, String>>) {
 
 @Composable
 private fun Fact(label: String, value: String, modifier: Modifier) {
-    Column(modifier) {
+    Column(modifier.semantics(mergeDescendants = true) {}) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         Spacer(Modifier.height(2.dp))
         Text(value, style = MaterialTheme.typography.bodyLarge.merge(Numeric), maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -403,7 +407,7 @@ private fun TechnicalDetails(track: Track, now: () -> Long) {
     Surface(shape = MaterialTheme.shapes.medium, color = cs.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
         Column {
             Row(
-                Modifier.fillMaxWidth().clickable { open = !open }.padding(16.dp),
+                Modifier.fillMaxWidth().clickable(role = Role.Button) { open = !open }.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {

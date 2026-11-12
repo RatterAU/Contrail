@@ -201,7 +201,9 @@ class MapViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     fun onViewport(v: Viewport) {
-        viewport.value = v
+        // Following a plane stops the camera ten times a second. Taking each stop as a new view kept the debounced
+        // poll from ever moving on, so the area around a followed plane went stale; only a real change restarts it.
+        if (viewport.value?.sameView(v) != true) viewport.value = v
     }
 
     /**

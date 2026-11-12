@@ -1,5 +1,7 @@
 package app.contrail.ui.map
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
 import android.content.Context
 
 import android.Manifest
@@ -195,7 +197,8 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 { v ->
                     vm.onViewport(v)
                     controller?.let { vm.windArea.value = it.visibleArea() }
-                    cameraPrefs.edit().putFloat("lat", v.lat.toFloat()).putFloat("lon", v.lon.toFloat()).putFloat("zoom", v.zoom.toFloat()).apply()
+                    // Not while following: the camera stops every frame then, and this would write ten times a second.
+                    if (!vm.following.value) cameraPrefs.edit().putFloat("lat", v.lat.toFloat()).putFloat("lon", v.lon.toFloat()).putFloat("zoom", v.zoom.toFloat()).apply()
                 },
                 onAircraftTap = { hex -> vm.select(hex) },
                 onAirportTap = { icao -> StaticData.now()?.airport(icao)?.let(vm::selectAirport) },
@@ -253,6 +256,12 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
         val c = controller ?: return@LaunchedEffect
         c.setRadar(radarFrames.map { it.second })
         if (radarFrames.isEmpty()) return@LaunchedEffect
+        if (c.reduceMotion) {
+            // Animations are off on this phone: show the newest frame, still.
+            radarIndex = radarFrames.lastIndex
+            c.showRadarFrame(radarFrames.lastIndex)
+            return@LaunchedEffect
+        }
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
                 for (i in radarFrames.indices) {
@@ -374,8 +383,10 @@ fun MapScreen(vm: MapViewModel, darkTheme: Boolean) {
                 if (vm.following.value && sel != null) {
                     all[sel]?.displayPosition(now)?.let { (lat, lon) -> c.moveTo(lat, lon, animate = false) }
                 }
-                // Following moves the camera every frame, so pace it fast whatever the zoom, or the map steps.
-                val frame = if (vm.following.value && sel != null) 100L else MapController.frameIntervalMs(cam.zoom, cam.target?.latitude ?: 0.0)
+                // Following moves the camera every frame, so it runs at twice the zoom's pace: half a dp a step, too
+                // small to see as stepping. (A flat 100 ms redrew a country-wide view ten times a second for nothing.)
+                val paced = MapController.frameIntervalMs(cam.zoom, cam.target?.latitude ?: 0.0)
+                val frame = if (vm.following.value && sel != null) (paced / 2).coerceIn(100L, 1_000L) else paced
                 withTimeoutOrNull(frame) { vm.redraw.first() }
             }
         }
@@ -651,8 +662,8 @@ private fun ControlStack(content: @Composable () -> Unit) {
 
 @Composable
 private fun StackButton(icon: ImageVector, description: String, badge: Boolean = false, onClick: () -> Unit) {
-    Box(Modifier.size(44.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        Icon(icon, description, Modifier.size(21.dp), tint = MaterialTheme.colorScheme.onSurface)
+    Box(Modifier.size(44.dp).clickable(role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(icon, if (badge) "$description, on" else description, Modifier.size(21.dp), tint = MaterialTheme.colorScheme.onSurface)
         if (badge) Box(Modifier.align(Alignment.TopEnd).padding(top = 9.dp, end = 9.dp).size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
     }
 }
@@ -660,12 +671,12 @@ private fun StackButton(icon: ImageVector, description: String, badge: Boolean =
 @Composable
 private fun SearchBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier.height(52.dp).glass(RoundedCornerShape(26.dp)).clickable(onClick = onClick).padding(horizontal = 16.dp),
+        modifier.height(52.dp).glass(RoundedCornerShape(26.dp)).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Rounded.Search, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(10.dp))
-        Text("Search flights and airports", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text("Search flights and airports", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
