@@ -18,7 +18,7 @@ You see a plane. You tap it. You know **where it came from, where it's going, an
 
 ### [Get it for Android](#on-android) &nbsp;·&nbsp; [Get it for iPhone](#on-an-iphone)
 
-<sub>Free, no store, no sign-up. About 20 MB on Android, 2 MB on iPhone.</sub>
+<sub>Free, no store, no sign-up. About 20 MB on Android, 2 MB on iPhone. Latest: [version 0.7, what's new](../../releases/latest).</sub>
 
 <br>
 
@@ -84,6 +84,8 @@ Your phone talks straight to free public feeds. There's no server in between to 
 **Times you don't have to convert.** Every time shows in the airport's own time zone, and says so. A flight leaving Melbourne shows Melbourne time, because "12:44 PM" means nothing if you don't know whose 12:44 it is.
 
 **It looks like it was designed, not assembled.** Clean, quiet and consistent: a floating glass control stack over the map, inset grouped lists, proper light and dark modes. Dark, light, streets and satellite maps, with a rain radar layer when you want it.
+
+**Easy to read, easy to hear.** Text grows with your phone's font size, and the readouts shrink to fit rather than getting cut off. TalkBack and VoiceOver read each figure with its name ("Altitude, 35,000 ft"). With *Reduce motion* on, the map jumps instead of flying, the rain radar shows its latest picture instead of looping, and the wind streaks hold still.
 
 **Nothing runs when it's closed.** No notifications, no background tracking, no battery drain. Close the app and it stops.
 
@@ -411,6 +413,7 @@ Three decisions carry most of the weight:
 - **The location dot doesn't follow the compass.** Compass mode redraws the whole map on every sensor tick, about 45 times a second, nonstop. That one setting was 90% of the app's CPU. Without it, map-screen CPU on the test device went from **177% to 21%**.
 - **Redraws are paced by zoom.** Zoomed into a city, planes move 10 times a second. Zoomed out to a continent, a plane moves less than a pixel a second, so the map redraws every 2 s. Planes off screen aren't drawn at all, and layers that haven't changed aren't re-uploaded.
 - **Fast-changing things don't redraw everything.** The 30 Hz compass and the one-second clocks are read only in the small piece of screen that shows them. Read high up, they'd rebuild the whole app 30 times a second. *Near you* went from 706 frames to 22 in 15 seconds with the phone held still.
+- **Following a plane is cheap.** The followed plane redraws at the pace its zoom needs, not 10 times a second, and the map only re-asks for nearby traffic when the view really changes. Following at country zoom went from **551 frames and 65% of a core to 83 frames and 11%** in 15 seconds.
 - **Sensor noise is rounded off** before it drives an animation (arrows turn in 2° steps), or the screen never goes idle.
 - **All parsing and merging runs off the main thread**, and the map stops redrawing entirely while a full-screen page covers it.
 
