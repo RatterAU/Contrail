@@ -79,6 +79,7 @@ private struct LookArrow: View {
             .rotationEffect(.degrees(bearing - (heading ?? 0)))
             .animation(.smooth, value: bearing - (heading ?? 0))
             .foregroundStyle(.tint)
+            .accessibilityHidden(true) // the row's text already says which way to look
     }
 }
 

@@ -117,7 +117,7 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
             r.union(MKMapRect(origin: MKMapPoint(CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon)), size: MKMapSize(width: 0, height: 0)))
         }
         let pad = UIEdgeInsets(top: mapView.safeAreaInsets.top + 70, left: 40, bottom: min(model.sheetHeight, mapView.bounds.height * 0.6) + 30, right: 60)
-        mapView.setVisibleMapRect(rect, edgePadding: pad, animated: true)
+        mapView.setVisibleMapRect(rect, edgePadding: pad, animated: !UIAccessibility.isReduceMotionEnabled)
     }
 
     func setVisible(_ v: Bool) {
@@ -140,7 +140,7 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
         let target = mapView.convert(CLLocationCoordinate2D(latitude: c.lat, longitude: c.lon), toPointTo: mapView)
         let shifted = CGPoint(x: target.x, y: target.y + (min(model.sheetHeight, size.height * 0.6) - mapView.safeAreaInsets.top) / 2)
         let centre = mapView.convert(shifted, toCoordinateFrom: mapView)
-        guard let glide else { return mapView.setCenter(centre, animated: animated) }
+        guard let glide else { return mapView.setCenter(centre, animated: animated && !UIAccessibility.isReduceMotionEnabled) }
         let cam = mapView.camera.copy() as! MKMapCamera
         cam.centerCoordinate = centre
         UIView.animate(withDuration: Double(glide) / 1000, delay: 0, options: [.curveLinear, .allowUserInteraction, .beginFromCurrentState]) {
@@ -151,7 +151,7 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
     func recentreOnUser() {
         guard let l = model.location.location else { return }
         let region = MKCoordinateRegion(center: l.coordinate, latitudinalMeters: 60_000, longitudinalMeters: 60_000)
-        mapView.setRegion(region, animated: true)
+        mapView.setRegion(region, animated: !UIAccessibility.isReduceMotionEnabled)
     }
 
     /// The first GPS fix of each launch flies there, unless the user has already moved the map.
@@ -160,7 +160,7 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
         flewToUser = true
         guard !userMovedMap else { return }
         let span = min(mapView.region.span.latitudeDelta, 1.5)
-        mapView.setRegion(MKCoordinateRegion(center: c, span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)), animated: true)
+        mapView.setRegion(MKCoordinateRegion(center: c, span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)), animated: !UIAccessibility.isReduceMotionEnabled)
     }
 
     // MARK: Ticks
@@ -444,7 +444,8 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
             if let top = clouds.last { mapView.insertOverlay(o, above: top) } else { mapView.insertOverlay(o, at: 0, level: .aboveRoads) }
         }
         radarFrame = radar.count - 1
-        guard radar.count > 1 else { return }
+        // Reduce Motion: hold the newest frame instead of looping the hour.
+        guard radar.count > 1, !UIAccessibility.isReduceMotionEnabled else { return }
         radarTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -662,13 +663,16 @@ final class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDele
         let halfHeight = Geo.distanceNm(r.center.latitude, r.center.longitude, r.center.latitude + r.span.latitudeDelta / 2, r.center.longitude)
         let tooWide = min(halfWidth, halfHeight) > 300
         if model.viewTooWide != tooWide { model.viewTooWide = tooWide }
-        model.viewport = Viewport(center: Coord(lat: r.center.latitude, lon: r.center.longitude), radiusNm: Int(min(max(radius, 5), 250)))
+        // Following moves the camera every 1 s tick. Taking each stop as a new view restarted the poll each tick,
+        // so it ran every tick instead of every 3 s. Only a real change of view restarts it.
+        let v = Viewport(center: Coord(lat: r.center.latitude, lon: r.center.longitude), radiusNm: Int(min(max(radius, 5), 250)))
+        if model.viewport.map(v.sameView) != true { model.viewport = v }
         model.mapMoving = false
         model.windArea = r.span.longitudeDelta >= 180
             ? Area(south: max(r.center.latitude - r.span.latitudeDelta / 2, -80), west: -180, north: min(r.center.latitude + r.span.latitudeDelta / 2, 80), east: 180)
             : Area(south: r.center.latitude - r.span.latitudeDelta / 2, west: r.center.longitude - r.span.longitudeDelta / 2,
                    north: r.center.latitude + r.span.latitudeDelta / 2, east: r.center.longitude + r.span.longitudeDelta / 2)
-        saveCamera()
+        if !model.following { saveCamera() } // not once a second while following
         updateAirports()
         render(animate: false)
     }

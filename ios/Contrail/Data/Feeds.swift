@@ -9,7 +9,8 @@ enum HTTP {
         // The request timeout only counts silence; this bounds a response that trickles in.
         c.timeoutIntervalForResource = 30
         c.waitsForConnectivity = false
-        c.httpAdditionalHeaders = ["User-Agent": "Contrail/0.1 (iOS)"]
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        c.httpAdditionalHeaders = ["User-Agent": "Contrail/\(v) (iOS)"] // the real version, as Android sends
         c.urlCache = URLCache(memoryCapacity: 16 << 20, diskCapacity: 128 << 20)
         return URLSession(configuration: c)
     }()

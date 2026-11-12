@@ -120,6 +120,8 @@ private struct RouteCard: View {
     let progress: FlightProgress?
     let loading: Bool
     let now: Millis
+    /// 30 pt at the default text size, growing and shrinking with the user's.
+    @ScaledMetric(relativeTo: .title) private var codeSize = 30.0
 
     var body: some View {
         Card {
@@ -159,7 +161,7 @@ private struct RouteCard: View {
 
     private func end(_ a: Airport, alignment: HorizontalAlignment) -> some View {
         VStack(alignment: alignment, spacing: 1) {
-            Text(a.code).font(.system(size: 30, weight: .bold, design: .rounded))
+            Text(a.code).font(.system(size: codeSize, weight: .bold, design: .rounded)).lineLimit(1).minimumScaleFactor(0.6)
             Text(a.shortName).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
         }
     }

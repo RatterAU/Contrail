@@ -33,6 +33,12 @@ enum Selection: Hashable {
 struct Viewport: Hashable {
     var center: Coord
     var radiusNm: Int
+
+    /// True when `o` shows much the same area, so polling it afresh would fetch the same planes.
+    func sameView(_ o: Viewport) -> Bool {
+        let r = Double(radiusNm)
+        return abs(Double(o.radiusNm) - r) <= r * 0.1 && Geo.distanceNm(center, o.center) <= r * 0.1
+    }
 }
 
 enum FeedStatus { case connecting, live, offline }

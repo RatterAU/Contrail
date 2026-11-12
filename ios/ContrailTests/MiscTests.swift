@@ -27,6 +27,14 @@ struct UnitsTests {
         #expect(f.nm(100) == "115 mi")
     }
 
+    @Test func followingRestartsPollingOnlyWhenTheViewReallyMoves() {
+        let v = Viewport(center: Coord(lat: -34.9, lon: 138.6), radiusNm: 20)
+        // A followed jet moves ~0.1 nm between camera stops: the same view. Two miles on, or zoomed, it's a new one.
+        #expect(v.sameView(Viewport(center: Coord(lat: -34.9015, lon: 138.6), radiusNm: 20)))
+        #expect(!v.sameView(Viewport(center: Coord(lat: -34.85, lon: 138.6), radiusNm: 20)))
+        #expect(!v.sameView(Viewport(center: v.center, radiusNm: 40)))
+    }
+
     @Test func clockHonoursTheSetting() {
         let utc = TimeZone(identifier: "UTC")!
         let ms: Millis = 1_792_918_779_500 // 08:59:39 UTC

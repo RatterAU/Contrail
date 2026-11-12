@@ -13,7 +13,8 @@ final class PastTour: XCTestCase {
     }
 
     func testPastFlightsAndReplay() throws {
-        app.launchArguments = ["-debugCamera", "2.5,-34.95,138.53"]
+        // Adelaide by default; TOUR_CAMERA="span,lat,lon" picks somewhere busy when it's night there.
+        app.launchArguments = ["-debugCamera", ProcessInfo.processInfo.environment["TOUR_CAMERA"] ?? "2.5,-34.95,138.53"]
         app.launch()
         let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Allow While Using App"]
         if allow.waitForExistence(timeout: 4) { allow.tap() }

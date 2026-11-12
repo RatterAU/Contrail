@@ -13,6 +13,8 @@ struct WindLayer: View {
     let level: WindLevel
     @State private var field: ScreenWind?
     @State private var particles = WindParticles()
+    /// Reduce Motion: the streaks are drawn once and stay still, which still shows the wind's direction.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hot = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
 
     private struct FieldKey: Equatable {
@@ -24,7 +26,7 @@ struct WindLayer: View {
 
     var body: some View {
         GeometryReader { geo in
-            TimelineView(.animation(minimumInterval: 1.0 / 20, paused: field == nil || phase != .active || model.following || hot)) { tl in
+            TimelineView(.animation(minimumInterval: 1.0 / 20, paused: field == nil || phase != .active || model.following || hot || reduceMotion)) { tl in
                 Canvas { ctx, _ in
                     guard let field, !model.following, !hot else { return }
                     particles.step(field, at: tl.date)

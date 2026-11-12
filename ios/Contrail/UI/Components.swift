@@ -95,6 +95,7 @@ struct Fact: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine) // "Altitude, 35,000 ft" as one item
     }
 }
 

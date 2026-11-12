@@ -117,13 +117,14 @@ private struct WeatherCard: View {
     let metar: Metar?
     let taf: String?
     let loaded: Bool
+    @ScaledMetric(relativeTo: .largeTitle) private var tempSize = 44.0
 
     var body: some View {
         SectionTitle("Weather", trailing: metar?.observed.map { "Observed \(Fmt.ago(Millis.now - $0))" })
         Card {
             if let m = metar {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(m.temp.map { "\(Int($0.rounded()))°" } ?? Fmt.none).font(.system(size: 44, weight: .semibold, design: .rounded))
+                    Text(m.temp.map { "\(Int($0.rounded()))°" } ?? Fmt.none).font(.system(size: tempSize, weight: .semibold, design: .rounded))
                     Spacer()
                     if let cat = m.category { Pill(text: cat, color: color(cat)) }
                 }
